@@ -164,7 +164,13 @@ def generar_excel(
         ("Alertas (#)", len(alertas)),
     ]
 
-    estado = "OK" if (len(alertas) == 0 and len(faltantes) == 0) else "REVISIÓN"
+    hay_alta = any(a[2] == "ALTA" for a in alertas)
+if hay_alta:
+    estado = "REVISIÓN"
+elif len(faltantes) > 0 or len(alertas) > 0:
+    estado = "ADVERTENCIA"
+else:
+    estado = "OK"
     resumen.append(("Estado", estado))
 
     fila = 2
