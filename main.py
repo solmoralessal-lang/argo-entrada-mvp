@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form
+ from fastapi import FastAPI, Form
 from fastapi.responses import FileResponse
 from openpyxl import load_workbook
 import os
@@ -51,7 +51,6 @@ def generar_excel(
     no_serie: str = Form("No legible"),
     cantidad: str = Form("No legible"),
 ):
-
     wb = load_workbook(TEMPLATE_FILE)
     ws = wb["Entrada"]
 
@@ -60,6 +59,7 @@ def generar_excel(
     tracking_original = (tracking or "").strip()
     tracking_texto = tracking_original
 
+    # Protege contra notación científica / formatos raros
     if (
         tracking_texto.lower().endswith("e")
         or "e+" in tracking_texto.lower()
@@ -73,7 +73,6 @@ def generar_excel(
     # =========================
     # HOJA ENTRADA
     # =========================
-
     ws["B2"] = (shipment_id or "").strip() or "No legible"
     ws["B3"] = fecha_recepcion
     ws["B4"] = cliente
@@ -97,7 +96,6 @@ def generar_excel(
     # =========================
     # DATOS FALTANTES
     # =========================
-
     faltantes = []
 
     campos = [
@@ -138,7 +136,6 @@ def generar_excel(
     # =========================
     # ALERTAS
     # =========================
-
     alertas = []
 
     if tracking_texto == "No legible":
@@ -150,6 +147,7 @@ def generar_excel(
     if ws["B4"].value == "No legible":
         alertas.append(("Cliente faltante", "No se detectó cliente", "ALTA"))
 
+    # Proveedor = MEDIA para no bloquear operación (tu decisión)
     if ws["B5"].value == "No legible":
         alertas.append(("Proveedor faltante", "No se detectó proveedor", "MEDIA"))
 
@@ -170,7 +168,6 @@ def generar_excel(
     # =========================
     # RESUMEN OPERATIVO
     # =========================
-
     ws_res = wb["Resumen operativo"]
     _clear_sheet(ws_res)
 
@@ -200,6 +197,16 @@ def generar_excel(
 
     resumen.append(("Estado", estado))
 
+    severidad_max = "NINGUNA"
+    if any(a[2] == "ALTA" for a in alertas):
+        severidad_max = "ALTA"
+    elif any(a[2] == "MEDIA" for a in alertas):
+        severidad_max = "MEDIA"
+    elif any(a[2] == "BAJA" for a in alertas):
+        severidad_max = "BAJA"
+
+    resumen.append(("Severidad máxima", severidad_max))
+
     fila = 2
     for item, valor in resumen:
         ws_res[f"A{fila}"] = item
@@ -209,7 +216,6 @@ def generar_excel(
     # =========================
     # GUARDADO
     # =========================
-
     cliente_archivo = _safe_filename(cliente)
     ult4 = (tracking_original[-4:] if len(tracking_original) >= 4 else tracking_original) or "XXXX"
 
@@ -219,10 +225,6 @@ def generar_excel(
     wb.save(output_path)
 
     return FileResponse(output_path, filename=output_name)
-
-
-
-
 
    
        
