@@ -151,7 +151,7 @@ def generar_excel(
         alertas.append(("Cliente faltante", "No se detectó cliente", "ALTA"))
 
     if ws["B5"].value == "No legible":
-        alertas.append(("Proveedor faltante", "No se detectó proveedor", "ALTA"))
+        alertas.append(("Proveedor faltante", "No se detectó proveedor", "MEDIA"))
 
     ws_al = wb["Alertas"]
     _clear_sheet(ws_al)
