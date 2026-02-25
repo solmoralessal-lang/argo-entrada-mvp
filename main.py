@@ -10,6 +10,28 @@ app = FastAPI()
 TEMPLATE_FILE = "PLANTILLA_OFICIAL_ARGO_ENTRADA.xlsx"
 OUTPUT_FOLDER = "salidas"
 
+ROUTING_V1 = {
+    "routing_version": "1.0",
+    "rules": [
+        {
+            "when_estado": "OK",
+            "action": "CONTINUAR",
+            "next": ["ARGO_CONTROL", "ARGO_CLASS", "ARGO_DOCUMENT"]
+        },
+        {
+            "when_estado": "ADVERTENCIA",
+            "action": "CONTINUAR_CON_BANDERA",
+            "flag": "REQUIERE_CONFIRMACION",
+            "next": ["ARGO_CONTROL", "ARGO_CLASS", "ARGO_DOCUMENT"]
+        },
+        {
+            "when_estado": "REVISION",
+            "action": "DETENER",
+            "next": [],
+            "reason": "DATOS_INSUFICIENTES_O_RIESGO_ALTO"
+        }
+    ]
+}
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
 
