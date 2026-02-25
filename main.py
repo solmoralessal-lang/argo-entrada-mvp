@@ -32,6 +32,21 @@ ROUTING_V1 = {
         }
     ]
 }
+def argo_control_validar(payload_entrada: dict) -> dict:
+    return {
+        "version": "1.0",
+        "modulo": "ARGO_CONTROL",
+        "estado": "OK",
+        "severidad_maxima": "NINGUNA",
+        "conteo": {"alertas": 0},
+        "alertas": [],
+        "entrada_ref": {
+            "version": payload_entrada.get("version"),
+            "modulo": payload_entrada.get("modulo"),
+            "shipment_id": payload_entrada.get("entrada", {}).get("shipment_id"),
+            "tracking": payload_entrada.get("entrada", {}).get("tracking")
+        }
+    }
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
 
