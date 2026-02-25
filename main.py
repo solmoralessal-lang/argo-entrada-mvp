@@ -181,7 +181,7 @@ control_stub = argo_control_validar({
     "modulo": "ARGO_ENTRADA",
     "entrada": entrada
 })
-    return {
+return {
         "version": "1.0",
         "modulo": "ARGO_ENTRADA",
         "estado": estado,
