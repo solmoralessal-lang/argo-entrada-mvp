@@ -33,6 +33,108 @@ def _clear_sheet(ws, max_rows=200, max_cols=10):
             ws.cell(row=r, column=c).value = None
 
 
+@app.post("/entrada/validar")
+def entrada_validar(
+    shipment_id: str = Form(...),
+    cliente: str = Form(...),
+    tracking: str = Form(...),
+    peso_total: str = Form(...),
+    unidad: str = Form(...),
+    pais_origen: str = Form(...),
+    proveedor: str = Form("No legible"),
+    paqueteria: str = Form("No legible"),
+    descripcion: str = Form("No legible"),
+    marca: str = Form("No legible"),
+    modelo: str = Form("No legible"),
+    no_parte: str = Form("No legible"),
+    no_lote: str = Form("No legible"),
+    no_serie: str = Form("No legible"),
+    cantidad: str = Form("No legible"),
+):
+    fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
+
+    tracking_original = (tracking or "").strip()
+    tracking_texto = tracking_original
+    if (
+        tracking_texto.lower().endswith("e")
+        or "e+" in tracking_texto.lower()
+        or "e-" in tracking_texto.lower()
+    ):
+        tracking_texto = "No legible"
+
+    cliente_n = (cliente or "").strip() or "No legible"
+    proveedor_n = (proveedor or "").strip() or "No legible"
+    paqueteria_n = (paqueteria or "").strip() or "No legible"
+
+    entrada = {
+        "shipment_id": (shipment_id or "").strip() or "No legible",
+        "fecha_recepcion": fecha_recepcion,
+        "cliente": cliente_n,
+        "proveedor": proveedor_n,
+        "paqueteria": paqueteria_n,
+        "tracking": tracking_texto,
+        "descripcion": (descripcion or "").strip() or "No legible",
+        "marca": (marca or "").strip() or "No legible",
+        "modelo": (modelo or "").strip() or "No legible",
+        "no_parte": (no_parte or "").strip() or "No legible",
+        "no_lote": (no_lote or "").strip() or "No legible",
+        "no_serie": (no_serie or "").strip() or "No legible",
+        "cantidad": (cantidad or "").strip() or "No legible",
+        "unidad": (unidad or "").strip() or "No legible",
+        "peso_total": (peso_total or "").strip() or "No legible",
+        "pais_origen": (pais_origen or "").strip() or "No legible",
+    }
+
+    faltantes = []
+    for k, v in entrada.items():
+        if str(v).strip() == "No legible":
+            faltantes.append({"campo": k, "valor": "No legible"})
+
+    alertas = []
+    if entrada["tracking"] == "No legible":
+        alertas.append(
+            {"alerta": "Tracking inválido", "detalle": "Formato incorrecto", "severidad": "ALTA"}
+        )
+    if entrada["peso_total"] == "No legible":
+        alertas.append(
+            {"alerta": "Peso no legible", "detalle": "No se detectó peso válido", "severidad": "MEDIA"}
+        )
+    if entrada["cliente"] == "No legible":
+        alertas.append(
+            {"alerta": "Cliente faltante", "detalle": "No se detectó cliente", "severidad": "ALTA"}
+        )
+    if entrada["proveedor"] == "No legible":
+        alertas.append(
+            {"alerta": "Proveedor faltante", "detalle": "No se detectó proveedor", "severidad": "MEDIA"}
+        )
+
+    hay_alta = any(a["severidad"] == "ALTA" for a in alertas)
+    if hay_alta:
+        estado = "REVISIÓN"
+    elif len(faltantes) > 0 or len(alertas) > 0:
+        estado = "ADVERTENCIA"
+    else:
+        estado = "OK"
+
+    severidad_maxima = "NINGUNA"
+    if any(a["severidad"] == "ALTA" for a in alertas):
+        severidad_maxima = "ALTA"
+    elif any(a["severidad"] == "MEDIA" for a in alertas):
+        severidad_maxima = "MEDIA"
+    elif any(a["severidad"] == "BAJA" for a in alertas):
+        severidad_maxima = "BAJA"
+
+    return {
+        "modulo": "ARGO_ENTRADA",
+        "estado": estado,
+        "severidad_maxima": severidad_maxima,
+        "conteo": {"faltantes": len(faltantes), "alertas": len(alertas)},
+        "faltantes": faltantes,
+        "alertas": alertas,
+        "entrada": entrada,
+    }
+
+
 @app.post("/generar")
 def generar_excel(
     shipment_id: str = Form(...),
@@ -59,7 +161,6 @@ def generar_excel(
     tracking_original = (tracking or "").strip()
     tracking_texto = tracking_original
 
-    # Protege contra notación científica / formatos raros
     if (
         tracking_texto.lower().endswith("e")
         or "e+" in tracking_texto.lower()
@@ -147,7 +248,6 @@ def generar_excel(
     if ws["B4"].value == "No legible":
         alertas.append(("Cliente faltante", "No se detectó cliente", "ALTA"))
 
-    # Proveedor = MEDIA para no bloquear operación (tu decisión)
     if ws["B5"].value == "No legible":
         alertas.append(("Proveedor faltante", "No se detectó proveedor", "MEDIA"))
 
@@ -187,7 +287,6 @@ def generar_excel(
     ]
 
     hay_alta = any(a[2] == "ALTA" for a in alertas)
-
     if hay_alta:
         estado = "REVISIÓN"
     elif len(faltantes) > 0 or len(alertas) > 0:
