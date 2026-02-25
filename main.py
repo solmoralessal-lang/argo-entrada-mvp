@@ -141,6 +141,7 @@ def entrada_validar(
         severidad_maxima = "BAJA"
 
     return {
+        "version": "1.0",
         "modulo": "ARGO_ENTRADA",
         "estado": estado,
         "severidad_maxima": severidad_maxima,
