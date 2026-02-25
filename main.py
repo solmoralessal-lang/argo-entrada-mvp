@@ -176,7 +176,11 @@ def entrada_validar(
         severidad_maxima = "MEDIA"
     elif any(a["severidad"] == "BAJA" for a in alertas):
         severidad_maxima = "BAJA"
-
+control_stub = argo_control_validar({
+    "version": "1.0",
+    "modulo": "ARGO_ENTRADA",
+    "entrada": entrada
+})
     return {
         "version": "1.0",
         "modulo": "ARGO_ENTRADA",
@@ -186,6 +190,7 @@ def entrada_validar(
         "faltantes": faltantes,
         "alertas": alertas,
         "entrada": entrada,
+        "control": control_stub
     }
 
 
