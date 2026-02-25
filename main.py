@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import FileResponse
 from openpyxl import load_workbook
 import os
@@ -52,10 +52,12 @@ def entrada_validar(
     cantidad: str = Form("No legible"),
 ):
         # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
+        # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
     def _clean_required(name: str, v: str) -> str:
         s = (v or "").strip()
         if s == "" or s.lower() == "string":
-            raise ValueError(f"Campo requerido inválido: {name}")
+            # 422 en vez de 500 (contrato estable)
+            raise HTTPException(status_code=422, detail=f"Campo requerido inválido: {name}")
         return s
 
     # Campos críticos (los que NO deben aceptar "string" / vacío)
