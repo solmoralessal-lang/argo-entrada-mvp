@@ -51,6 +51,20 @@ def entrada_validar(
     no_serie: str = Form("No legible"),
     cantidad: str = Form("No legible"),
 ):
+        # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
+    def _clean_required(name: str, v: str) -> str:
+        s = (v or "").strip()
+        if s == "" or s.lower() == "string":
+            raise ValueError(f"Campo requerido inválido: {name}")
+        return s
+
+    # Campos críticos (los que NO deben aceptar "string" / vacío)
+    shipment_id = _clean_required("shipment_id", shipment_id)
+    cliente     = _clean_required("cliente", cliente)
+    tracking    = _clean_required("tracking", tracking)
+    peso_total  = _clean_required("peso_total", peso_total)
+    unidad      = _clean_required("unidad", unidad)
+    pais_origen = _clean_required("pais_origen", pais_origen)
     fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
 
     tracking_original = (tracking or "").strip()
