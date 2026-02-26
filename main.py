@@ -69,7 +69,7 @@ def _clear_sheet(ws, max_rows=200, max_cols=10):
         for c in range(1, max_cols + 1):
             ws.cell(row=r, column=c).value = None
 
-    @app.post("/entrada/validar")
+@app.post("/entrada/validar")
 def entrada_validar(
     shipment_id: str = Form(...),
     cliente: str = Form(...),
