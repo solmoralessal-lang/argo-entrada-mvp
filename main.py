@@ -1,10 +1,10 @@
-from fastapi import FastAPI, Form, HTTPException
+from fastapi import FastAPI, Form, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from openpyxl import load_workbook
 import os
 import re
 from datetime import datetime
-
+from argo_control import argo_control_validar
 app = FastAPI()
 
 TEMPLATE_FILE = "PLANTILLA_OFICIAL_ARGO_ENTRADA.xlsx"
@@ -344,7 +344,33 @@ def generar_excel(
     wb.save(output_path)
 
     return FileResponse(output_path, filename=output_name)
+@app.post("/argo-control")
+async def ejecutar_argo_control(
+    archivo_entrada: UploadFile = File(...),
+    plantilla_control: UploadFile = File(...)
+):
 
+    # Guardar archivos temporalmente
+    entrada_path = f"temp_{archivo_entrada.filename}"
+    control_path = f"temp_{plantilla_control.filename}"
+
+    with open(entrada_path, "wb") as f:
+        f.write(await archivo_entrada.read())
+
+    with open(control_path, "wb") as f:
+        f.write(await plantilla_control.read())
+
+    # Ejecutar validación
+    output_path, icono, estatus = argo_control_validar(
+        entrada_path,
+        control_path
+    )
+
+    return FileResponse(
+        path=output_path,
+        filename=output_path.split("/")[-1],
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
    
        
    
