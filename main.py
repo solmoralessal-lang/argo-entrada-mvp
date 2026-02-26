@@ -87,8 +87,7 @@ def entrada_validar(
     no_serie: str = Form("No legible"),
     cantidad: str = Form("No legible"),
 ):
-
-    # --- Validación anti-placeholder ---
+    # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
     def _clean_required(name: str, v: str) -> str:
         s = (v or "").strip()
         if s == "" or s.lower() == "string":
@@ -130,6 +129,7 @@ def entrada_validar(
         if valor == "No legible":
             faltantes.append({"campo": campo, "valor": valor})
 
+    # Estado base
     estado = "OK"
     severidad_maxima = "NINGUNA"
 
@@ -148,16 +148,12 @@ def entrada_validar(
         "modulo": "ARGO_ENTRADA",
         "estado": estado,
         "severidad_maxima": severidad_maxima,
-        "conteo": {
-            "faltantes": len(faltantes),
-            "alertas": len(alertas)
-        },
+        "conteo": {"faltantes": len(faltantes), "alertas": len(alertas)},
         "faltantes": faltantes,
         "alertas": alertas,
         "entrada": entrada,
         "control": control_stub
     }
-
 
 @app.post("/generar")
 def generar_excel(
