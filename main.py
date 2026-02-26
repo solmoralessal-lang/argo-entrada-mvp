@@ -69,27 +69,6 @@ def _clear_sheet(ws, max_rows=200, max_cols=10):
         for c in range(1, max_cols + 1):
             ws.cell(row=r, column=c).value = None
 
-
-@app.post("/entrada/validar")
-def entrada_validar(
-    shipment_id: str = Form(...),
-    cliente: str = Form(...),
-    tracking: str = Form(...),
-    peso_total: str = Form(...),
-    unidad: str = Form(...),
-    pais_origen: str = Form(...),
-    proveedor: str = Form("No legible"),
-    paqueteria: str = Form("No legible"),
-    descripcion: str = Form("No legible"),
-    marca: str = Form("No legible"),
-    modelo: str = Form("No legible"),
-    no_parte: str = Form("No legible"),
-    no_lote: str = Form("No legible"),
-    no_serie: str = Form("No legible"),
-    cantidad: str = Form("No legible"),
-):
-        # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
-        # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
     @app.post("/entrada/validar")
 def entrada_validar(
     shipment_id: str = Form(...),
