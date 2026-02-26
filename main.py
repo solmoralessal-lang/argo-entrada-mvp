@@ -90,103 +90,89 @@ def entrada_validar(
 ):
         # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
         # --- Validación anti-placeholder de Swagger ("string") y vacíos ---
+    @app.post("/entrada/validar")
+def entrada_validar(
+    shipment_id: str = Form(...),
+    cliente: str = Form(...),
+    tracking: str = Form(...),
+    peso_total: str = Form(...),
+    unidad: str = Form(...),
+    pais_origen: str = Form(...),
+    proveedor: str = Form("No legible"),
+    paqueteria: str = Form("No legible"),
+    descripcion: str = Form("No legible"),
+    marca: str = Form("No legible"),
+    modelo: str = Form("No legible"),
+    no_parte: str = Form("No legible"),
+    no_lote: str = Form("No legible"),
+    no_serie: str = Form("No legible"),
+    cantidad: str = Form("No legible"),
+):
+
+    # --- Validación anti-placeholder ---
     def _clean_required(name: str, v: str) -> str:
         s = (v or "").strip()
         if s == "" or s.lower() == "string":
-            # 422 en vez de 500 (contrato estable)
             raise HTTPException(status_code=422, detail=f"Campo requerido inválido: {name}")
         return s
 
-    # Campos críticos (los que NO deben aceptar "string" / vacío)
     shipment_id = _clean_required("shipment_id", shipment_id)
-    cliente     = _clean_required("cliente", cliente)
-    tracking    = _clean_required("tracking", tracking)
-    peso_total  = _clean_required("peso_total", peso_total)
-    unidad      = _clean_required("unidad", unidad)
+    cliente = _clean_required("cliente", cliente)
+    tracking = _clean_required("tracking", tracking)
+    peso_total = _clean_required("peso_total", peso_total)
+    unidad = _clean_required("unidad", unidad)
     pais_origen = _clean_required("pais_origen", pais_origen)
+
     fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
 
-    tracking_original = (tracking or "").strip()
-    tracking_texto = tracking_original
-    if (
-        tracking_texto.lower().endswith("e")
-        or "e+" in tracking_texto.lower()
-        or "e-" in tracking_texto.lower()
-    ):
-        tracking_texto = "No legible"
-
-    cliente_n = (cliente or "").strip() or "No legible"
-    proveedor_n = (proveedor or "").strip() or "No legible"
-    paqueteria_n = (paqueteria or "").strip() or "No legible"
-
     entrada = {
-        "shipment_id": (shipment_id or "").strip() or "No legible",
+        "shipment_id": shipment_id,
         "fecha_recepcion": fecha_recepcion,
-        "cliente": cliente_n,
-        "proveedor": proveedor_n,
-        "paqueteria": paqueteria_n,
-        "tracking": tracking_texto,
-        "descripcion": (descripcion or "").strip() or "No legible",
-        "marca": (marca or "").strip() or "No legible",
-        "modelo": (modelo or "").strip() or "No legible",
-        "no_parte": (no_parte or "").strip() or "No legible",
-        "no_lote": (no_lote or "").strip() or "No legible",
-        "no_serie": (no_serie or "").strip() or "No legible",
-        "cantidad": (cantidad or "").strip() or "No legible",
-        "unidad": (unidad or "").strip() or "No legible",
-        "peso_total": (peso_total or "").strip() or "No legible",
-        "pais_origen": (pais_origen or "").strip() or "No legible",
+        "cliente": cliente,
+        "proveedor": proveedor,
+        "paqueteria": paqueteria,
+        "tracking": tracking,
+        "descripcion": descripcion,
+        "marca": marca,
+        "modelo": modelo,
+        "no_parte": no_parte,
+        "no_lote": no_lote,
+        "no_serie": no_serie,
+        "cantidad": cantidad,
+        "unidad": unidad,
+        "peso_total": peso_total,
+        "pais_origen": pais_origen
     }
 
     faltantes = []
-    for k, v in entrada.items():
-        if str(v).strip() == "No legible":
-            faltantes.append({"campo": k, "valor": "No legible"})
-
     alertas = []
-    if entrada["tracking"] == "No legible":
-        alertas.append(
-            {"alerta": "Tracking inválido", "detalle": "Formato incorrecto", "severidad": "ALTA"}
-        )
-    if entrada["peso_total"] == "No legible":
-        alertas.append(
-            {"alerta": "Peso no legible", "detalle": "No se detectó peso válido", "severidad": "MEDIA"}
-        )
-    if entrada["cliente"] == "No legible":
-        alertas.append(
-            {"alerta": "Cliente faltante", "detalle": "No se detectó cliente", "severidad": "ALTA"}
-        )
-    if entrada["proveedor"] == "No legible":
-        alertas.append(
-            {"alerta": "Proveedor faltante", "detalle": "No se detectó proveedor", "severidad": "MEDIA"}
-        )
 
-    hay_alta = any(a["severidad"] == "ALTA" for a in alertas)
-    if hay_alta:
-        estado = "REVISIÓN"
-    elif len(faltantes) > 0 or len(alertas) > 0:
-        estado = "ADVERTENCIA"
-    else:
-        estado = "OK"
+    for campo, valor in entrada.items():
+        if valor == "No legible":
+            faltantes.append({"campo": campo, "valor": valor})
 
+    estado = "OK"
     severidad_maxima = "NINGUNA"
-    if any(a["severidad"] == "ALTA" for a in alertas):
-        severidad_maxima = "ALTA"
-    elif any(a["severidad"] == "MEDIA" for a in alertas):
+
+    if len(faltantes) > 0:
+        estado = "ADVERTENCIA"
         severidad_maxima = "MEDIA"
-    elif any(a["severidad"] == "BAJA" for a in alertas):
-        severidad_maxima = "BAJA"
-control_stub = argo_control_validar({
-    "version": "1.0",
-    "modulo": "ARGO_ENTRADA",
-    "entrada": entrada
-})
-return {
+
+    control_stub = argo_control_validar({
+        "version": "1.0",
+        "modulo": "ARGO_ENTRADA",
+        "entrada": entrada
+    })
+
+    return {
         "version": "1.0",
         "modulo": "ARGO_ENTRADA",
         "estado": estado,
         "severidad_maxima": severidad_maxima,
-        "conteo": {"faltantes": len(faltantes), "alertas": len(alertas)},
+        "conteo": {
+            "faltantes": len(faltantes),
+            "alertas": len(alertas)
+        },
         "faltantes": faltantes,
         "alertas": alertas,
         "entrada": entrada,
