@@ -5,6 +5,8 @@ import os
 import re
 from datetime import datetime
 from argo_control import argo_control_validar
+import argo_control
+print("ARGO_CONTROL importado desde:", argo_control.__file__)
 app = FastAPI()
 
 TEMPLATE_FILE = "PLANTILLA_OFICIAL_ARGO_ENTRADA.xlsx"
