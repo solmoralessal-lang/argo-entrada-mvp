@@ -363,7 +363,7 @@ async def ejecutar_argo_control(
         f.write(await plantilla_control.read())
 
     # Ejecutar validación
-    output_path, icono, estatus = argo_control_validar(
+    output_path, icono, estatus = argo_control_validar_v2(
         entrada_path,
         control_path
     )
