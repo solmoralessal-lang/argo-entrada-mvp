@@ -4,11 +4,7 @@ import os
 
 
 def argo_control_validar_v2(archivo_entrada_path, plantilla_control_path):
-    if len(args) != 2:
-        raise ValueError("argo_control_validar requiere 2 argumentos: archivo_entrada_path, plantilla_control_path")
-
-    archivo_entrada_path, plantilla_control_path = args
-
+    
     # Cargar archivos
     wb_entrada = load_workbook(archivo_entrada_path)
     wb_control = load_workbook(plantilla_control_path)
