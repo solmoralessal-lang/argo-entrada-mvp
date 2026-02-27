@@ -3,7 +3,11 @@ from datetime import datetime
 import os
 
 
-def argo_control_validar(archivo_entrada_path, plantilla_control_path):
+def argo_control_validar(*args):
+    if len(args) != 2:
+        raise ValueError("argo_control_validar requiere 2 argumentos: archivo_entrada_path, plantilla_control_path")
+
+    archivo_entrada_path, plantilla_control_path = args
 
     # Cargar archivos
     wb_entrada = load_workbook(archivo_entrada_path)
