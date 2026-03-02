@@ -38,17 +38,28 @@ def argo_control_validar_v2(archivo_entrada_path, plantilla_control_path):
             errores += 1
 
         fila += 1
+            # ----------------------------
+    # Cálculo de porcentaje dinámico
+    # ----------------------------
 
-    # Determinar estatus general
-    if errores > 0:
-        estatus = "RECHAZADO"
-        icono = "🔴"
-    elif no_verificables > 0:
-        estatus = "CON_OBSERVACIONES"
-        icono = "🟡"
+    total_campos = fila - 2  # total filas procesadas
+    total_inconsistencias = errores + no_verificables
+
+    if total_campos > 0:
+        porcentaje_error = (total_inconsistencias / total_campos) * 100
     else:
-        estatus = "APROBADO"
-        icono = "🟢"
+        porcentaje_error = 0
+    # Determinar estatus general por umbral porcentual dinámico
+
+if porcentaje_error < 10:
+    estatus = "APROBADO"
+    icono = "🟢"
+elif porcentaje_error < 30:
+    estatus = "CON_OBSERVACIONES"
+    icono = "🟡"
+else:
+    estatus = "RECHAZADO"
+    icono = "🔴"
 
     fecha = datetime.now().strftime("%m%d%Y")
     nombre_salida = f"ARGO_CONTROL_{estatus}_{fecha}.xlsx"
