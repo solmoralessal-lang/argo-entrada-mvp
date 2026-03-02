@@ -61,7 +61,15 @@ def argo_control_validar_v2(archivo_entrada_path, plantilla_control_path):
     else:
         estatus = "RECHAZADO"
         icono = "🔴"
+    # ----------------------------
+    # Escribir resumen en hoja Control
+    # ----------------------------
+    ws_control["F1"] = "% Inconsistencias"
+    ws_control["G1"] = round(porcentaje_error, 2)
 
+    ws_control["F2"] = "Dictamen"
+    ws_control["G2"] = estatus
+    
     fecha = datetime.now().strftime("%m%d%Y")
     nombre_salida = f"ARGO_CONTROL_{estatus}_{fecha}.xlsx"
 
