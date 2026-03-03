@@ -374,20 +374,14 @@ async def ejecutar_argo_control(
     )
 from pydantic import BaseModel
 from typing import Any, Dict
-
+from argo_class_engine import build_output
 
 class ArgoClassRequest(BaseModel):
     payload: Dict[str, Any]
 
-
 @app.post("/argo/class/v2026/clasificar")
 def argo_class_clasificar(req: ArgoClassRequest):
-    return {
-        "ok": True,
-        "schema": "ARGO_CLASS_OUTPUT_V2026",
-        "mensaje": "Endpoint activo. Motor pendiente de integrar en Paso A2.",
-        "meta": req.payload.get("meta", {})
-    }
+    return build_output(req.payload)
        
    
 
