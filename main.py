@@ -372,7 +372,20 @@ async def ejecutar_argo_control(
         filename=output_path.split("/")[-1],
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-   
+   from pydantic import BaseModel
+from typing import Any, Dict
+
+class ArgoClassRequest(BaseModel):
+    payload: Dict[str, Any]
+
+@app.post("/argo/class/v2026/clasificar")
+def argo_class_clasificar(req: ArgoClassRequest):
+    return {
+        "ok": True,
+        "schema": "ARGO_CLASS_OUTPUT_V2026",
+        "mensaje": "Endpoint activo. Motor pendiente de integrar en Paso A2.",
+        "meta": req.payload.get("meta", {})
+    }
        
    
 
