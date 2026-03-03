@@ -45,6 +45,15 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
         score = 100
     if score < 0:
         score = 0
+            # -------- RIESGO AUTOMATICO (MVP) --------
+    if score >= 80:
+        riesgo = "BAJO"
+    elif score >= 65:
+        riesgo = "MODERADO"
+    elif score >= 50:
+        riesgo = "ALTO"
+    else:
+        riesgo = "CRITICO"   
     return {
         "meta": {
             "schema": "ARGO_CLASS_OUTPUT_V2026",
@@ -66,9 +75,9 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
                 "fraccion_sugerida": "POR_DEFINIR"
             },
             "certeza_y_riesgo": {
-                "certeza_base_pct": 0,
-                "certeza_final_pct": 0,
-                "riesgo_automatico": "PENDIENTE"
+                "certeza_base_pct": score,
+                "certeza_final_pct": score,
+               "riesgo_automatico": riesgo
             }
         }
     }
