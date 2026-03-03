@@ -29,6 +29,22 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     elif any(p in descripcion for p in ["motor", "bomba", "rpm", "valvula"]):
         sector = "MAQUINARIA"
         confianza = 75
+            # -------- SCORE DOCUMENTAL BASICO (MVP) --------
+    score = 50  # base
+
+    # Si hay descripcion, sube
+    if descripcion.strip():
+        score += 10
+
+    # Si detecta QUIMICO y menciona MSDS, sube más (porque ya trae soporte)
+    if sector == "QUIMICO" and "msds" in descripcion:
+        score += 10
+
+    # límites 0-100
+    if score > 100:
+        score = 100
+    if score < 0:
+        score = 0
     return {
         "meta": {
             "schema": "ARGO_CLASS_OUTPUT_V2026",
@@ -43,9 +59,9 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
                 "confianza_sector_pct": confianza
         },
             "score_documental": {
-                "score_total_0_100": 0,
-                "nivel_debida_diligencia": "PENDIENTE"
-            },
+                "score_total_0_100": score,
+                "nivel_debida_diligencia": "MEDIA" if score >= 60 else "ALTA"
+        },
             "clasificacion": {
                 "fraccion_sugerida": "POR_DEFINIR"
             },
