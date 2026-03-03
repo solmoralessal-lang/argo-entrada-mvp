@@ -219,7 +219,17 @@ def score_documental(payload: Dict[str, Any], sector: str, descripcion: str) -> 
     # ---- Score total
     score_raw = ident + soporte + congr
     score_final = clamp(score_raw - penal_total, 0, 100)
+        # ---- Piso de score por sector (evita colapso extremo)
+    piso = 0
+    if sector == "QUIMICO":
+        piso = 25
+    elif sector in ["ELECTRONICO", "TEXTIL", "MAQUINARIA"]:
+        piso = 20
+    else:
+        piso = 30 if desc.strip() else 0
 
+    if score_final < piso:
+        score_final = piso
     # Debida diligencia (mapeo)
     if score_final >= 80:
         dd = "BASICA"
