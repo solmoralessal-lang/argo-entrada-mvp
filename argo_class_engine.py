@@ -11,7 +11,24 @@ def hash_payload(payload: Dict[str, Any]) -> str:
 def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
 
     meta = payload_master.get("meta", {})
+        # -------- DETECCION BASICA DE SECTOR --------
+    sector = "OTRO"
+    confianza = 50
 
+    descripcion = str(payload_master.get("descripcion", "")).lower()
+
+    if any(p in descripcion for p in ["msds", "solvente", "acido", "resina"]):
+        sector = "QUIMICO"
+        confianza = 80
+    elif any(p in descripcion for p in ["volt", "watt", "usb", "sensor"]):
+        sector = "ELECTRONICO"
+        confianza = 80
+    elif any(p in descripcion for p in ["fibra", "algodon", "poliester", "tejido"]):
+        sector = "TEXTIL"
+        confianza = 80
+    elif any(p in descripcion for p in ["motor", "bomba", "rpm", "valvula"]):
+        sector = "MAQUINARIA"
+        confianza = 75
     return {
         "meta": {
             "schema": "ARGO_CLASS_OUTPUT_V2026",
@@ -22,9 +39,9 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
         },
         "salida": {
             "sector_ia": {
-                "sector_detectado": "PENDIENTE",
-                "confianza_sector_pct": 0
-            },
+                "sector_detectado": sector,
+                "confianza_sector_pct": confianza
+        },
             "score_documental": {
                 "score_total_0_100": 0,
                 "nivel_debida_diligencia": "PENDIENTE"
