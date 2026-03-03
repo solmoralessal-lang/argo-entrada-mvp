@@ -345,8 +345,11 @@ def generar_excel(
     wb.save(output_path)
 
     return FileResponse(output_path, filename=output_name)
+from fastapi import Query  # asegúrate de tener este import arriba
+
 @app.post("/argo-control")
 async def ejecutar_argo_control(
+    modo: str = Query("excel", description="excel|json"),
     archivo_entrada: UploadFile = File(...),
     plantilla_control: UploadFile = File(...)
 ):
@@ -366,11 +369,19 @@ async def ejecutar_argo_control(
         entrada_path,
         control_path
     )
-
-    return FileResponse(
-        path=output_path,
-        filename=output_path.split("/")[-1],
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if modo.lower() == "json":
+    return {
+        "ok": True,
+        "modulo": "ARGO_CONTROL",
+        "estatus": estatus,
+        "icono": icono,
+        "output_path": output_path
+    }
+    # --- Mantener Excel ---
+return FileResponse(
+    path=output_path,
+    filename=output_path.split("/")[-1],
+    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 from pydantic import BaseModel
 from typing import Any, Dict
