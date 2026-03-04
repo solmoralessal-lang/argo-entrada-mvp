@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
 
-from utils_operacion import generar_id_operacion
+from utils_operacion import generar_id_operacion, escribir_log_operacion
 from openpyxl import load_workbook
 import os
 import re
@@ -491,11 +491,12 @@ async def argo_pipeline_clasificar(
         # 5) Respuesta unificada
         # ----------------------------
         return {
-            "ok": True,
-            "modulo": "ARGO_PIPELINE",
-            "control": control_json,
-            "class": salida_class
-        }
+    "ok": True,
+    "modulo": "ARGO_PIPELINE",
+    "id_operacion": id_operacion,
+    "control": control_json,
+    "class": salida_class
+}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
