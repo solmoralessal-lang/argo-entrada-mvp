@@ -424,6 +424,10 @@ async def argo_pipeline_clasificar(
     plantilla_control: UploadFile = File(...),
     descripcion: str = Form(""),
 ):
+    id_operacion = generar_id_operacion()
+    
+    print(f"ID_OPERACION_PIPELINE: {id_operacion}")
+    
     """
     Pipeline 1-shot:
       1) Recibe Excel de ARGO ENTRADA + Plantilla CONTROL
