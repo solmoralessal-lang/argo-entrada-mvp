@@ -360,36 +360,61 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     # alertas por baja confianza
     alerts: List[Dict[str, Any]] = []
     if conf_sector < 45:
-        alerts.append(make_alert("CRITICA", "CLASS_SECTOR_CRITICO", "Confianza sectorial crítica (<45%).", "Aportar ficha técnica/catálogo/composición.", "SECTOR_IA"))
+        alerts.append(
+            make_alert(
+                "CRITICA",
+                "CLASS_SECTOR_CRITICO",
+                "Confianza sectorial crítica (<45%).",
+                "Aportar ficha técnica/catálogo/composición.",
+                "SECTOR_IA",
+            )
+        )
     elif conf_sector < 70:
-        alerts.append(make_alert("ADVERTENCIA", "CLASS_SECTOR_BAJA", "Confianza sectorial baja (45–69%).", "Reforzar evidencia técnica de función/material.", "SECTOR_IA"))
+        alerts.append(
+            make_alert(
+                "ADVERTENCIA",
+                "CLASS_SECTOR_BAJA",
+                "Confianza sectorial baja (45–69%).",
+                "Reforzar evidencia técnica de función/material.",
+                "SECTOR_IA",
+            )
+        )
     if posible_multisector:
-        alerts.append(make_alert("ADVERTENCIA", "CLASS_MULTI_SECTOR", "Posible multisector detectado.", "Confirmar función principal y componente dominante.", "SECTOR_IA"))
+        alerts.append(
+            make_alert(
+                "ADVERTENCIA",
+                "CLASS_MULTI_SECTOR",
+                "Posible multisector detectado.",
+                "Confirmar función principal y componente dominante.",
+                "SECTOR_IA",
+            )
+        )
 
     # 2) Score documental por bloques + faltantes
-scoring = score_documental(payload_master, sector, descripcion)
+    scoring = score_documental(payload_master, sector, descripcion)
 
-# --- Integración ARGO CONTROL ---
-resumen_control = _argo_control_extraer_resumen(payload_master)
-control_influencia, penal_control = _argo_control_influencia_y_penalizacion(resumen_control)
+    # --- Integración ARGO CONTROL ---
+    resumen_control = _argo_control_extraer_resumen(payload_master)
+    control_influencia, penal_control = _argo_control_influencia_y_penalizacion(resumen_control)
 
-score = int(scoring["score_total_0_100"])
-dd = scoring["nivel_debida_diligencia"]
+    score = int(scoring["score_total_0_100"])
+    dd = scoring["nivel_debida_diligencia"]
 
-score = max(0, score - penal_control)
+    # aplicar penalización de control
+    score = max(0, score - int(penal_control or 0))
 
-alerts.extend(scoring["alertas"])
-datos_faltantes = scoring["datos_faltantes"]
+    alerts.extend(scoring.get("alertas", []))
+    datos_faltantes = scoring.get("datos_faltantes", [])
 
-# 3) Certeza (por ahora: base=score, final=score)
-certeza_base = score
-certeza_final = score
+    # 3) Certeza (por ahora: base=score, final=score)
+    certeza_base = score
+    certeza_final = score
 
-# 4) Riesgo automático
-riesgo = riesgo_automatico(score, conf_sector, posible_multisector, alerts)
+    # 4) Riesgo automático
+    riesgo = riesgo_automatico(score, conf_sector, posible_multisector, alerts)
 
-# 5) Salida
-out = {
+    # 5) Salida
+    out: Dict[str, Any] = {
         "meta": {
             "schema": "ARGO_CLASS_OUTPUT_V2026",
             "id_operacion": meta.get("id_operacion"),
@@ -407,8 +432,8 @@ out = {
             "score_documental": {
                 "score_total_0_100": score,
                 "nivel_debida_diligencia": dd,
-                "bloques": scoring["bloques"],
-                "control_influencia": control_influencia
+                "bloques": scoring.get("bloques", {}),
+                "control_influencia": control_influencia,
             },
             "clasificacion": {
                 "fraccion_sugerida": "POR_DEFINIR",
@@ -427,7 +452,8 @@ out = {
                 "nivel": "CRITICA" if riesgo == "CRITICO" else "PREVENTIVA",
                 "texto": "Clasificación/certeza calculadas según documentación proporcionada; el criterio final corresponde al usuario/cliente.",
                 "fundamento": ["ART_54_LA_REFORMADO", "CIRCULAR_T_0250_2025"],
-            }
-        }
+            },
+        },
     }
+
     return out
