@@ -370,13 +370,19 @@ async def ejecutar_argo_control(
 
     # Modo JSON (para ARGO CLASS)
     if modo.lower() == "json":
-        return {
-            "ok": True,
-            "modulo": "ARGO_CONTROL",
-            "estatus": estatus,
-            "icono": icono,
-            "output_path": output_path
-        }
+
+    from argo_control import extraer_resumen_control_desde_excel
+
+    resumen = extraer_resumen_control_desde_excel(output_path)
+
+    return {
+        "ok": True,
+        "modulo": "ARGO_CONTROL",
+        "estatus": estatus,
+        "icono": icono,
+        "output_path": output_path,
+        "resumen": resumen
+    }
 
     # Mantener Excel
     return FileResponse(
