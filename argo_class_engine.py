@@ -376,15 +376,14 @@ control_influencia, penal_control = _argo_control_influencia_y_penalizacion(resu
 score = int(scoring["score_total_0_100"])
 dd = scoring["nivel_debida_diligencia"]
 
-# aplicar penalización de control
 score = max(0, score - penal_control)
 
 alerts.extend(scoring["alertas"])
 datos_faltantes = scoring["datos_faltantes"]
 
-    # 3) Certeza (por ahora: base=score, final=score)
-    certeza_base = score
-    certeza_final = score
+# 3) Certeza
+certeza_base = score
+certeza_final = score
 
     # 4) Riesgo automático
     riesgo = riesgo_automatico(score, conf_sector, posible_multisector, alerts)
