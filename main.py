@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form, HTTPException, UploadFile, File
+from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from openpyxl import load_workbook
 import os
@@ -345,7 +345,6 @@ def generar_excel(
     wb.save(output_path)
 
     return FileResponse(output_path, filename=output_name)
-from fastapi import Query  # asegúrate de tener este import arriba
 
 @app.post("/argo-control")
 async def ejecutar_argo_control(
@@ -353,7 +352,6 @@ async def ejecutar_argo_control(
     archivo_entrada: UploadFile = File(...),
     plantilla_control: UploadFile = File(...)
 ):
-
     # Guardar archivos temporalmente
     entrada_path = f"temp_{archivo_entrada.filename}"
     control_path = f"temp_{plantilla_control.filename}"
@@ -369,7 +367,9 @@ async def ejecutar_argo_control(
         entrada_path,
         control_path
     )
-     if modo.lower() == "json":
+
+    # Modo JSON (para ARGO CLASS)
+    if modo.lower() == "json":
         return {
             "ok": True,
             "modulo": "ARGO_CONTROL",
@@ -378,7 +378,7 @@ async def ejecutar_argo_control(
             "output_path": output_path
         }
 
-    # --- Mantener Excel ---
+    # Mantener Excel
     return FileResponse(
         path=output_path,
         filename=output_path.split("/")[-1],
