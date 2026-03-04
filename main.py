@@ -407,8 +407,102 @@ def argo_class_clasificar(req: ArgoClassRequest):
         payload["argo_control"] = payload["control"]
 
     return build_output(payload)
-       
-   
+
+from fastapi import UploadFile, File, Form, HTTPException
+import os
+
+# IMPORTS necesarios (ajusta si tus rutas/nombres son distintos)
+from argo_control import argo_control_validar_v2, extraer_resumen_control_desde_excel
+from argo_class_engine import build_output
+
+
+@app.post("/argo/pipeline/clasificar")
+async def argo_pipeline_clasificar(
+    archivo_entrada: UploadFile = File(...),
+    plantilla_control: UploadFile = File(...),
+    descripcion: str = Form(""),
+):
+    """
+    Pipeline 1-shot:
+      1) Recibe Excel de ARGO ENTRADA + Plantilla CONTROL
+      2) Ejecuta ARGO CONTROL (genera output excel y resumen)
+      3) Inyecta resumen dentro del payload para ARGO CLASS
+      4) Ejecuta build_output(payload) y regresa JSON final
+    """
+    try:
+        # ----------------------------
+        # 1) Guardar archivos temporales
+        # ----------------------------
+        entrada_path = f"temp_{archivo_entrada.filename}"
+        control_path = f"temp_{plantilla_control.filename}"
+
+        with open(entrada_path, "wb") as f:
+            f.write(await archivo_entrada.read())
+
+        with open(control_path, "wb") as f:
+            f.write(await plantilla_control.read())
+
+        # ----------------------------
+        # 2) Ejecutar ARGO CONTROL
+        # ----------------------------
+        output_path, icono, estatus = argo_control_validar_v2(entrada_path, control_path)
+
+        resumen = extraer_resumen_control_desde_excel(output_path)
+
+        control_json = {
+            "ok": True,
+            "modulo": "ARGO_CONTROL",
+            "estatus": estatus,
+            "icono": icono,
+            "output_path": output_path,
+            "resumen": resumen
+        }
+
+        # ----------------------------
+        # 3) Construir payload para ARGO CLASS
+        # ----------------------------
+        payload_master = {
+            "meta": {
+                "id_operacion": None,
+                "id_shipment": None,
+                "id_item": None,
+            },
+            "descripcion": descripcion or "",
+            # Esta llave es la que ya soportas en ARGO CLASS:
+            "control": {
+                "resumen": resumen
+            },
+            # Y también pasamos el objeto completo por si luego lo ocupas:
+            "argo_control": control_json
+        }
+
+        # ----------------------------
+        # 4) Ejecutar ARGO CLASS (motor)
+        # ----------------------------
+        salida_class = build_output(payload_master)
+
+        # ----------------------------
+        # 5) Respuesta unificada
+        # ----------------------------
+        return {
+            "ok": True,
+            "modulo": "ARGO_PIPELINE",
+            "control": control_json,
+            "class": salida_class
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
+
+    finally:
+        # Limpieza (opcional). Si quieres conservar temporales para debug, comenta esto.
+        try:
+            if os.path.exists(entrada_path):
+                os.remove(entrada_path)
+            if os.path.exists(control_path):
+                os.remove(control_path)
+        except Exception:
+            pass
 
    
        
