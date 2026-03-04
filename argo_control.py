@@ -79,3 +79,66 @@ def argo_control_validar_v2(archivo_entrada_path, plantilla_control_path):
     wb_control.save(output_path)
 
     return output_path, icono, estatus
+
+def extraer_resumen_control_desde_excel(output_path: str) -> dict:
+    """
+    Resumen mínimo para ARGO CLASS.
+    Lee el Excel generado por ARGO CONTROL y calcula:
+      - observaciones_total: cantidad de filas con Estado != OK (col C)
+      - severidad_maxima: BAJA/MEDIA/ALTA según dictamen (G2) o por observaciones
+      - dictamen: APROBADO / CON_OBSERVACIONES / RECHAZADO (si existe en G2)
+    """
+    from openpyxl import load_workbook
+
+    resumen = {
+        "observaciones_total": 0,
+        "severidad_maxima": "BAJA",
+        "dictamen": None
+    }
+
+    try:
+        wb = load_workbook(output_path, data_only=True)
+
+        if "Control" not in wb.sheetnames:
+            return resumen
+
+        ws = wb["Control"]
+
+        # Dictamen que tú ya escribes en F2/G2
+        dictamen = ws["G2"].value
+        if isinstance(dictamen, str) and dictamen.strip():
+            dictamen = dictamen.strip().upper()
+            resumen["dictamen"] = dictamen
+
+            if dictamen == "RECHAZADO":
+                resumen["severidad_maxima"] = "ALTA"
+            elif dictamen == "CON_OBSERVACIONES":
+                resumen["severidad_maxima"] = "MEDIA"
+            elif dictamen == "APROBADO":
+                resumen["severidad_maxima"] = "BAJA"
+
+        # Contar observaciones (columna C = Estado)
+        fila = 2
+        obs = 0
+        while ws[f"A{fila}"].value:
+            estado = ws[f"C{fila}"].value
+            estado_txt = (str(estado).strip().upper() if estado is not None else "")
+            if estado_txt and estado_txt != "OK":
+                obs += 1
+            fila += 1
+
+        resumen["observaciones_total"] = obs
+
+        # Si no hubo dictamen, derivar severidad por cantidad
+        if resumen["dictamen"] is None:
+            if obs == 0:
+                resumen["severidad_maxima"] = "BAJA"
+            elif obs <= 3:
+                resumen["severidad_maxima"] = "MEDIA"
+            else:
+                resumen["severidad_maxima"] = "ALTA"
+
+        return resumen
+
+    except Exception:
+        return resumen
