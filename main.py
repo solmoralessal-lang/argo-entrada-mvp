@@ -425,20 +425,13 @@ async def argo_pipeline_clasificar(
     descripcion: str = Form(""),
 ):
     id_operacion = generar_id_operacion()
-    
     print(f"ID_OPERACION_PIPELINE: {id_operacion}")
-    
-    """
-    Pipeline 1-shot:
-      1) Recibe Excel de ARGO ENTRADA + Plantilla CONTROL
-      2) Ejecuta ARGO CONTROL (genera output excel y resumen)
-      3) Inyecta resumen dentro del payload para ARGO CLASS
-      4) Ejecuta build_output(payload) y regresa JSON final
-    """
+
+    entrada_path = None
+    control_path = None
+
     try:
-        # ----------------------------
         # 1) Guardar archivos temporales
-        # ----------------------------
         entrada_path = f"temp_{archivo_entrada.filename}"
         control_path = f"temp_{plantilla_control.filename}"
 
@@ -448,68 +441,89 @@ async def argo_pipeline_clasificar(
         with open(control_path, "wb") as f:
             f.write(await plantilla_control.read())
 
-        # ----------------------------
-        # 2) Ejecutar ARGO CONTROL
-        # ----------------------------
-        output_path, icono, estatus = argo_control_validar_v2(entrada_path, control_path)
+        # 2) Ejecutar ARGO CONTROL (con trazabilidad)
+        output_path, icono, estatus = argo_control_validar_v2(
+            entrada_path,
+            control_path,
+            id_operacion=id_operacion
+        )
 
         resumen = extraer_resumen_control_desde_excel(output_path)
 
         control_json = {
             "ok": True,
             "modulo": "ARGO_CONTROL",
+            "id_operacion": id_operacion,
             "estatus": estatus,
             "icono": icono,
             "output_path": output_path,
             "resumen": resumen
         }
 
-        # ----------------------------
-        # 3) Construir payload para ARGO CLASS
-        # ----------------------------
+        # 3) Payload para ARGO CLASS (con id_operacion)
         payload_master = {
             "meta": {
-                "id_operacion": None,
+                "id_operacion": id_operacion,
                 "id_shipment": None,
                 "id_item": None,
             },
             "descripcion": descripcion or "",
-            # Esta llave es la que ya soportas en ARGO CLASS:
-            "control": {
-                "resumen": resumen
-            },
-            # Y también pasamos el objeto completo por si luego lo ocupas:
+            "control": {"resumen": resumen},
             "argo_control": control_json
         }
 
-        # ----------------------------
-        # 4) Ejecutar ARGO CLASS (motor)
-        # ----------------------------
+        # 4) Ejecutar ARGO CLASS
         salida_class = build_output(payload_master)
 
-        # ----------------------------
-        # 5) Respuesta unificada
-        # ----------------------------
+        # 5) Log JSON por operación (no rompe si falla)
+        try:
+            escribir_log_operacion(
+                id_operacion=id_operacion,
+                payload={
+                    "modulo": "ARGO_PIPELINE",
+                    "inputs": {
+                        "entrada_path": entrada_path,
+                        "plantilla_control_path": control_path,
+                        "descripcion": descripcion or "",
+                    },
+                    "outputs": {
+                        "control_output_path": output_path,
+                        "class_output_path": (salida_class.get("output_path") if isinstance(salida_class, dict) else None),
+                    },
+                    "control": {
+                        "estatus": estatus,
+                        "icono": icono,
+                        "resumen": resumen,
+                    },
+                    "class": salida_class,
+                },
+                logs_dir="logs",
+            )
+        except Exception as log_err:
+            print(f"WARNING LOG {id_operacion}: {log_err}")
+
+        # 6) Respuesta unificada
         return {
-    "ok": True,
-    "modulo": "ARGO_PIPELINE",
-    "id_operacion": id_operacion,
-    "control": control_json,
-    "class": salida_class
-}
+            "ok": True,
+            "modulo": "ARGO_PIPELINE",
+            "id_operacion": id_operacion,
+            "control": control_json,
+            "class": salida_class
+        }
 
     except Exception as e:
+        # AHORA sí: el error real se ve en /docs
         raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
 
     finally:
-        # Limpieza (opcional). Si quieres conservar temporales para debug, comenta esto.
+        # Limpieza segura (no revienta aunque algo falle arriba)
         try:
-            if os.path.exists(entrada_path):
+            if entrada_path and os.path.exists(entrada_path):
                 os.remove(entrada_path)
-            if os.path.exists(control_path):
+            if control_path and os.path.exists(control_path):
                 os.remove(control_path)
-        except Exception:
-            pass
+        except Exception as cleanup_err:
+            print(f"WARNING CLEANUP {id_operacion}: {cleanup_err}")
 
    
        
