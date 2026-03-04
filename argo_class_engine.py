@@ -381,15 +381,15 @@ score = max(0, score - penal_control)
 alerts.extend(scoring["alertas"])
 datos_faltantes = scoring["datos_faltantes"]
 
-# 3) Certeza
+# 3) Certeza (por ahora: base=score, final=score)
 certeza_base = score
 certeza_final = score
 
-    # 4) Riesgo automático
-    riesgo = riesgo_automatico(score, conf_sector, posible_multisector, alerts)
+# 4) Riesgo automático
+riesgo = riesgo_automatico(score, conf_sector, posible_multisector, alerts)
 
-    # 5) Salida
-    out = {
+# 5) Salida
+out = {
         "meta": {
             "schema": "ARGO_CLASS_OUTPUT_V2026",
             "id_operacion": meta.get("id_operacion"),
