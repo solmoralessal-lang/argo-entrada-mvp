@@ -396,15 +396,44 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     # --- Integración ARGO CONTROL ---
     resumen_control = _argo_control_extraer_resumen(payload_master)
     control_influencia, penal_control = _argo_control_influencia_y_penalizacion(resumen_control)
+    penal_control = int(penal_control or 0)
 
+    # Reflejar penalización de CONTROL en el bloque de penalizaciones (opción 1)
+    try:
+        if isinstance(scoring.get("bloques"), dict):
+            base_pen = int(scoring["bloques"].get("penalizaciones_por_faltantes", 0) or 0)
+            scoring["bloques"]["penalizaciones_por_faltantes"] = base_pen + penal_control
+    except Exception:
+        pass
+
+    # Score final (resta penalización control)
     score = int(scoring["score_total_0_100"])
     dd = scoring["nivel_debida_diligencia"]
 
-    # aplicar penalización de control
-    score = max(0, score - int(penal_control or 0))
+    score = max(0, score - penal_control)
+
+    # Si control trae severidad alta, intensificar DD (sin bajar niveles)
+    try:
+        sev = (control_influencia.get("severidad_maxima") or "").strip().upper()
+        if sev == "ALTA":
+            dd = "INTENSIVA"
+    except Exception:
+        pass
 
     alerts.extend(scoring.get("alertas", []))
     datos_faltantes = scoring.get("datos_faltantes", [])
+
+    # Alerta explícita por hallazgos en CONTROL (transparencia)
+    try:
+        obs_total = control_influencia.get("observaciones_total")
+        if isinstance(obs_total, int) and obs_total > 0:
+            nivel = "CRITICA" if control_influencia.get("severidad_maxima") == "ALTA" else "ADVERTENCIA"
+            codigo = "CLASS_CONTROL_HALLAZGOS"
+            msg = f"ARGO CONTROL reporta {obs_total} observación(es). Severidad: {control_influencia.get('severidad_maxima')}."
+            accion = "Revisar y corregir inconsistencias del módulo CONTROL antes de dictaminar."
+            alerts.append(make_alert(nivel, codigo, msg, accion, "ARGO_CONTROL"))
+    except Exception:
+        pass
 
     # 3) Certeza (por ahora: base=score, final=score)
     certeza_base = score
