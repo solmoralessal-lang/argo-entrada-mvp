@@ -3,7 +3,7 @@ from datetime import datetime
 import os
 
 
-def argo_control_validar_v2(archivo_entrada_path, plantilla_control_path):
+def argo_control_validar_v2(entrada_path, control_path, id_operacion=None):
     
     # Cargar archivos
     wb_entrada = load_workbook(archivo_entrada_path)
