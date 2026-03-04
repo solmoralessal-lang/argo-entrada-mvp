@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
+
+from utils_operacion import generar_id_operacion
 from openpyxl import load_workbook
 import os
 import re
