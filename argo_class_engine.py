@@ -289,6 +289,64 @@ def riesgo_automatico(score: int, sector_conf: int, posible_multisector: bool, a
 # =========================
 # 4) Motor principal
 # =========================
+def _argo_control_extraer_resumen(payload: dict) -> dict:
+    """
+    Busca el resumen de ARGO CONTROL en cualquiera de estas rutas:
+    - payload["argo_control"]["resumen"]
+    - payload["control"]["resumen"]
+    - payload["argo_control_resumen"]
+    """
+    if not isinstance(payload, dict):
+        return {}
+
+    ac = payload.get("argo_control")
+    if isinstance(ac, dict):
+        r = ac.get("resumen")
+        if isinstance(r, dict):
+            return r
+
+    c = payload.get("control")
+    if isinstance(c, dict):
+        r = c.get("resumen")
+        if isinstance(r, dict):
+            return r
+
+    r = payload.get("argo_control_resumen")
+    if isinstance(r, dict):
+        return r
+
+    return {}
+
+
+def _argo_control_influencia_y_penalizacion(resumen: dict) -> tuple[dict, int]:
+    """
+    Convierte el resumen en:
+    - control_influencia (para tu salida)
+    - penalizacion (puntos a restar al score)
+    """
+    observaciones = resumen.get("observaciones_total")
+    severidad = (resumen.get("severidad_maxima") or "").strip().upper()
+    dictamen = (resumen.get("dictamen") or "").strip().upper()
+
+    if severidad == "ALTA" or dictamen == "RECHAZADO":
+        penal = 20
+        sev_out = "ALTA"
+    elif severidad == "MEDIA" or dictamen == "CON_OBSERVACIONES":
+        penal = 10
+        sev_out = "MEDIA"
+    else:
+        penal = 0
+        sev_out = "BAJA"
+
+    control_influencia = {
+        "consistencia_pct": None,
+        "severidad_maxima": sev_out,
+        "dictamen": dictamen or None,
+        "observaciones_total": int(observaciones) if isinstance(observaciones, (int, float)) else None,
+        "penalizacion_aplicada": penal
+    }
+
+    return control_influencia, penal
 def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     meta = payload_master.get("meta", {}) or {}
     descripcion = str(payload_master.get("descripcion", "") or "")
@@ -309,12 +367,20 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
         alerts.append(make_alert("ADVERTENCIA", "CLASS_MULTI_SECTOR", "Posible multisector detectado.", "Confirmar función principal y componente dominante.", "SECTOR_IA"))
 
     # 2) Score documental por bloques + faltantes
-    scoring = score_documental(payload_master, sector, descripcion)
-    score = int(scoring["score_total_0_100"])
-    dd = scoring["nivel_debida_diligencia"]
+scoring = score_documental(payload_master, sector, descripcion)
 
-    alerts.extend(scoring["alertas"])
-    datos_faltantes = scoring["datos_faltantes"]
+# --- Integración ARGO CONTROL ---
+resumen_control = _argo_control_extraer_resumen(payload_master)
+control_influencia, penal_control = _argo_control_influencia_y_penalizacion(resumen_control)
+
+score = int(scoring["score_total_0_100"])
+dd = scoring["nivel_debida_diligencia"]
+
+# aplicar penalización de control
+score = max(0, score - penal_control)
+
+alerts.extend(scoring["alertas"])
+datos_faltantes = scoring["datos_faltantes"]
 
     # 3) Certeza (por ahora: base=score, final=score)
     certeza_base = score
@@ -342,8 +408,8 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
             "score_documental": {
                 "score_total_0_100": score,
                 "nivel_debida_diligencia": dd,
-                "bloques": scoring.get("bloques", {}),
-                "control_influencia": scoring.get("control_influencia", {}),
+                "bloques": scoring["bloques"],
+                "control_influencia": control_influencia
             },
             "clasificacion": {
                 "fraccion_sugerida": "POR_DEFINIR",
