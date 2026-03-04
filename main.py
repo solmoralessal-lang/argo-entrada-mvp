@@ -424,13 +424,15 @@ async def argo_pipeline_clasificar(
     plantilla_control: UploadFile = File(...),
     descripcion: str = Form(""),
 ):
-    id_operacion = generar_id_operacion()
-    print(f"ID_OPERACION_PIPELINE: {id_operacion}")
-
+    id_operacion = None
     entrada_path = None
     control_path = None
 
     try:
+        # ID único end-to-end (AHORA sí dentro del try)
+        id_operacion = generar_id_operacion()
+        print(f"ID_OPERACION_PIPELINE: {id_operacion}")
+
         # 1) Guardar archivos temporales
         entrada_path = f"temp_{archivo_entrada.filename}"
         control_path = f"temp_{plantilla_control.filename}"
@@ -475,7 +477,7 @@ async def argo_pipeline_clasificar(
         # 4) Ejecutar ARGO CLASS
         salida_class = build_output(payload_master)
 
-        # 5) Log JSON por operación (no rompe si falla)
+        # 5) Log JSON por operación (si falla NO rompe)
         try:
             escribir_log_operacion(
                 id_operacion=id_operacion,
@@ -502,7 +504,7 @@ async def argo_pipeline_clasificar(
         except Exception as log_err:
             print(f"WARNING LOG {id_operacion}: {log_err}")
 
-        # 6) Respuesta unificada
+        # 6) Respuesta
         return {
             "ok": True,
             "modulo": "ARGO_PIPELINE",
@@ -512,11 +514,9 @@ async def argo_pipeline_clasificar(
         }
 
     except Exception as e:
-        # AHORA sí: el error real se ve en /docs
         raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
 
     finally:
-        # Limpieza segura (no revienta aunque algo falle arriba)
         try:
             if entrada_path and os.path.exists(entrada_path):
                 os.remove(entrada_path)
