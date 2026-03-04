@@ -348,9 +348,9 @@ def generar_excel(
 
 @app.post("/argo-control")
 async def ejecutar_argo_control(
-    modo: str = Query("excel", description="excel|json"),
     archivo_entrada: UploadFile = File(...),
-    plantilla_control: UploadFile = File(...)
+    plantilla_control: UploadFile = File(...),
+    modo: str = Form("excel")
 ):
     # Guardar archivos temporalmente
     entrada_path = f"temp_{archivo_entrada.filename}"
