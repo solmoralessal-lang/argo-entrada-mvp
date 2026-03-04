@@ -393,7 +393,14 @@ class ArgoClassRequest(BaseModel):
 
 @app.post("/argo/class/v2026/clasificar")
 def argo_class_clasificar(req: ArgoClassRequest):
-    return build_output(req.payload)
+
+    payload = req.payload
+
+    # Si viene información de ARGO CONTROL, agregarla al payload
+    if "control" in payload:
+        payload["argo_control"] = payload["control"]
+
+    return build_output(payload)
        
    
 
