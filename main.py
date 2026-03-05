@@ -9,6 +9,20 @@ from datetime import datetime
 from argo_control import argo_control_validar_v2
 
 app = FastAPI()
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "detail": str(exc),
+            "path": str(request.url.path),
+        },
+    )
 
 TEMPLATE_FILE = "PLANTILLA_OFICIAL_ARGO_ENTRADA.xlsx"
 OUTPUT_FOLDER = "salidas"
