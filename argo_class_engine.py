@@ -1,4 +1,8 @@
 from typing import Dict, Any, List
+# --- Variables legacy globales (evita NameError en cualquier función del módulo) ---
+archivo_entrada_path = None
+plantilla_control_path = None
+
 import hashlib
 import json
 
