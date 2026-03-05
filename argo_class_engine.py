@@ -378,6 +378,12 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
 
     # ---- Sigue tu lógica actual ----
     descripcion = str(payload_master.get("descripcion", "") or "")
+    
+    # ... aquí sigue TODO tu código actual (sector IA, alerts, etc) con indentación ...
+    
+    # 1) Sector IA
+    sector_info = detect_sector(descripcion)
+    sector = sector_info["sector_detectado"]
     resultado_fraccion = sugerir_fraccion(descripcion, sector)
 
     clasificacion = {
@@ -387,11 +393,6 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
         "confianza_fraccion_pct": resultado_fraccion["confianza_fraccion_pct"],
         "candidatos": resultado_fraccion["candidatos"]
     }
-    # ... aquí sigue TODO tu código actual (sector IA, alerts, etc) con indentación ...
-    
-    # 1) Sector IA
-    sector_info = detect_sector(descripcion)
-    sector = sector_info["sector_detectado"]
     conf_sector = int(sector_info["confianza_sector_pct"])
     posible_multisector = bool(sector_info["posible_multisector"])
 
