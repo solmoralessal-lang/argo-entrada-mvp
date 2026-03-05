@@ -481,6 +481,15 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
             "id_item": meta.get("id_item"),
             "hash_input": hash_payload(payload_master),
         },
+        resultado_fraccion = sugerir_fraccion(descripcion, sector)
+
+clasificacion = {
+    "fraccion_sugerida": resultado_fraccion["fraccion_sugerida"],
+    "descripcion_fraccion": resultado_fraccion["descripcion_fraccion"],
+    "metodo_clasificacion": resultado_fraccion["metodo_clasificacion"],
+    "confianza_fraccion_pct": resultado_fraccion["confianza_fraccion_pct"],
+    "candidatos": resultado_fraccion["candidatos"]
+}
         "salida": {
             "sector_ia": {
                 "sector_detectado": sector,
@@ -494,15 +503,9 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
                 "bloques": scoring.get("bloques", {}),
                 "control_influencia": control_influencia,
             },
-            resultado_fraccion = sugerir_fraccion(descripcion, sector)
+            "clasificacion": clasificacion,
 
-            clasificacion = {
-                "fraccion_sugerida": resultado_fraccion["fraccion_sugerida"],
-                "descripcion_fraccion": resultado_fraccion["descripcion_fraccion"],
-                "metodo_clasificacion": resultado_fraccion["metodo_clasificacion"],
-                "confianza_fraccion_pct": resultado_fraccion["confianza_fraccion_pct"],
-                "candidatos": resultado_fraccion["candidatos"]
-            }
+            
             "certeza_y_riesgo": {
                 "certeza_base_pct": certeza_base,
                 "certeza_final_pct": certeza_final,
