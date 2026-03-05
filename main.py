@@ -479,14 +479,24 @@ async def argo_pipeline_clasificar(
         # 3) Payload para ARGO CLASS (con id_operacion)
         payload_master = {
             "meta": {
-                "id_operacion": id_operacion,
-                "id_shipment": None,
-                "id_item": None,
-            },
-            "descripcion": descripcion or "",
-            "control": {"resumen": resumen},
-            "argo_control": control_json
-        }
+            "id_operacion": id_operacion,
+            "id_shipment": None,
+            "id_item": None,
+        },
+        "descripcion": descripcion or "",
+
+        # Paths estándar + compatibilidad (evita NameError)
+        "entrada_path": entrada_path,
+        "control_path": control_path,
+        "archivo_entrada_path": entrada_path,
+        "plantilla_control_path": control_path,
+
+        # Resumen de CONTROL para influir certeza
+        "control": {"resumen": resumen},
+
+        # Objeto completo de CONTROL por si se ocupa
+        "argo_control": control_json
+    }
 
         # 4) Ejecutar ARGO CLASS
         salida_class = build_output(payload_master)
