@@ -37,8 +37,9 @@ def argo_control_validar_v2(entrada_path, control_path, id_operacion=None):
             ws_control[f"D{fila}"] = "Campo no encontrado en ARGO ENTRADA"
             errores += 1
 
-        fila += 1
-         # ----------------------------
+                fila += 1
+
+    # ----------------------------
     # Cálculo de porcentaje dinámico
     # ----------------------------
 
