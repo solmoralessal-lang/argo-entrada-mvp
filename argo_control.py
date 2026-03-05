@@ -74,14 +74,15 @@ def argo_control_validar_v2(entrada_path, control_path, id_operacion=None):
     fecha = datetime.now().strftime("%m%d%Y")
 
 # Nombre del archivo con trazabilidad
-if id_operacion:
-    nombre_salida = f"{id_operacion}__ARGO_CONTROL__{estatus}_{fecha}.xlsx"
-else:
-    nombre_salida = f"ARGO_CONTROL_{estatus}_{fecha}.xlsx"
+    if id_operacion:
+        nombre_salida = f"{id_operacion}_ARGO_CONTROL_{estatus}_{fecha}.xlsx"
+    else:
+        nombre_salida = f"ARGO_CONTROL_{estatus}_{fecha}.xlsx"
 
     output_path = os.path.join("outputs", nombre_salida)
     os.makedirs("outputs", exist_ok=True)
     wb_control.save(output_path)
+
     return output_path, icono, estatus
 
 def extraer_resumen_control_desde_excel(output_path: str) -> dict:
