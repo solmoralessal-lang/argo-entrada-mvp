@@ -5,7 +5,7 @@ plantilla_control_path = None
 
 import hashlib
 import json
-
+from argo_class_fraccion import sugerir_fraccion
 
 # =========================
 # Utilidades
@@ -494,10 +494,15 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
                 "bloques": scoring.get("bloques", {}),
                 "control_influencia": control_influencia,
             },
-            "clasificacion": {
-                "fraccion_sugerida": "POR_DEFINIR",
-                "nota": "Motor de fracción (LIGIE/IGI/Notas) se integra en Bloque 2.",
-            },
+            resultado_fraccion = sugerir_fraccion(descripcion, sector)
+
+            clasificacion = {
+                "fraccion_sugerida": resultado_fraccion["fraccion_sugerida"],
+                "descripcion_fraccion": resultado_fraccion["descripcion_fraccion"],
+                "metodo_clasificacion": resultado_fraccion["metodo_clasificacion"],
+                "confianza_fraccion_pct": resultado_fraccion["confianza_fraccion_pct"],
+                "candidatos": resultado_fraccion["candidatos"]
+            }
             "certeza_y_riesgo": {
                 "certeza_base_pct": certeza_base,
                 "certeza_final_pct": certeza_final,
