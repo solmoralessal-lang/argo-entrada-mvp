@@ -6,8 +6,8 @@ import os
 def argo_control_validar_v2(entrada_path, control_path, id_operacion=None):
     
     # Cargar archivos
-    wb_entrada = load_workbook(archivo_entrada_path)
-    wb_control = load_workbook(plantilla_control_path)
+    wb_entrada = load_workbook(entrada_path)
+    wb_control = load_workbook(control_path)
 
     ws_entrada = wb_entrada.active
     ws_control = wb_control["Control"]
