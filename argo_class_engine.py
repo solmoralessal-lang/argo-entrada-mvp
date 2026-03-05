@@ -348,14 +348,36 @@ def _argo_control_influencia_y_penalizacion(resumen: dict) -> tuple[dict, int]:
 
     return control_influencia, penal
 def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
+    def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
+    # ---- Normalización base ----
+    payload_master = payload_master or {}
     meta = payload_master.get("meta", {}) or {}
 
-    archivo_entrada_path = payload_master.get("archivo_entrada_path") or payload_master.get("entrada_path")
-    plantilla_control_path = payload_master.get("plantilla_control_path") or payload_master.get("control_path")
-    id_operacion = meta.get("id_operacion")
-    
-    descripcion = str(payload_master.get("descripcion", "") or "")
+    payload_master.setdefault("inputs", {})
 
+    # ---- Variables estándar ----
+    id_operacion = meta.get("id_operacion")
+    entrada_path = payload_master.get("entrada_path") or payload_master.get("inputs", {}).get("entrada_path")
+    control_path = payload_master.get("control_path") or payload_master.get("inputs", {}).get("control_path")
+
+    # ---- Compatibilidad TOTAL (keys legacy) ----
+    payload_master["archivo_entrada_path"] = payload_master.get("archivo_entrada_path") or entrada_path
+    payload_master["plantilla_control_path"] = payload_master.get("plantilla_control_path") or control_path
+
+    payload_master["inputs"]["archivo_entrada_path"] = payload_master["archivo_entrada_path"]
+    payload_master["inputs"]["plantilla_control_path"] = payload_master["plantilla_control_path"]
+    payload_master["inputs"]["id_operacion"] = id_operacion
+
+    # ---- Compatibilidad TOTAL (variables legacy como GLOBALS) ----
+    # Esto hace que cualquier función del módulo que use archivo_entrada_path
+    # ya lo encuentre definido.
+    global archivo_entrada_path, plantilla_control_path
+    archivo_entrada_path = payload_master["archivo_entrada_path"]
+    plantilla_control_path = payload_master["plantilla_control_path"]
+
+    # ---- Sigue tu lógica actual ----
+    descripcion = str(payload_master.get("descripcion", "") or "")
+    
     # 1) Sector IA
     sector_info = detect_sector(descripcion)
     sector = sector_info["sector_detectado"]
