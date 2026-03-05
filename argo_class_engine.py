@@ -348,7 +348,6 @@ def _argo_control_influencia_y_penalizacion(resumen: dict) -> tuple[dict, int]:
 
     return control_influencia, penal
 def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
-    def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     # ---- Normalización base ----
     payload_master = payload_master or {}
     meta = payload_master.get("meta", {}) or {}
@@ -369,14 +368,14 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     payload_master["inputs"]["id_operacion"] = id_operacion
 
     # ---- Compatibilidad TOTAL (variables legacy como GLOBALS) ----
-    # Esto hace que cualquier función del módulo que use archivo_entrada_path
-    # ya lo encuentre definido.
     global archivo_entrada_path, plantilla_control_path
     archivo_entrada_path = payload_master["archivo_entrada_path"]
     plantilla_control_path = payload_master["plantilla_control_path"]
 
     # ---- Sigue tu lógica actual ----
     descripcion = str(payload_master.get("descripcion", "") or "")
+
+    # ... aquí sigue TODO tu código actual (sector IA, alerts, etc) con indentación ...
     
     # 1) Sector IA
     sector_info = detect_sector(descripcion)
