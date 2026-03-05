@@ -349,6 +349,11 @@ def _argo_control_influencia_y_penalizacion(resumen: dict) -> tuple[dict, int]:
     return control_influencia, penal
 def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     meta = payload_master.get("meta", {}) or {}
+
+    archivo_entrada_path = payload_master.get("archivo_entrada_path") or payload_master.get("entrada_path")
+    plantilla_control_path = payload_master.get("plantilla_control_path") or payload_master.get("control_path")
+    id_operacion = meta.get("id_operacion")
+    
     descripcion = str(payload_master.get("descripcion", "") or "")
 
     # 1) Sector IA
