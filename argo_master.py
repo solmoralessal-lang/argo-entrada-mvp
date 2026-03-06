@@ -353,13 +353,14 @@ def build_master_output(
         modulos_ejecutados=modulos_ejecutados,
     )
 
-    # Semáforo de operación
-if riesgo_global == "CRITICO" or severidad_maxima_global == "CRITICA":
-    semaforo_operacion = "🔴"
-elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
-    semaforo_operacion = "🟡"
-else:
-    semaforo_operacion = "🟢"
+        # Semáforo de operación
+        if riesgo_global == "CRITICO" or severidad_maxima_global == "CRITICA":
+            semaforo_operacion = "🔴"
+        elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
+            semaforo_operacion = "🟡"
+        else:
+            semaforo_operacion = "🟢"
+
     resumen_global = ResumenGlobal(
         estatus_global=estatus_global,
         icono_global=_map_severidad_to_icon(severidad_maxima_global),
@@ -384,20 +385,12 @@ else:
         origen_ejecucion=origen_ejecucion,
     )
 
-    modulos = Modulos(
-        control=control_mod,
-        class_=class_mod,
-        document=document_mod,
-    )
-
-    indicadores = Indicadores(
-        control=indicadores_control,
-        class_=indicadores_class,
-        document=indicadores_document,
-    )
-
     trazabilidad = Trazabilidad(
-        pipeline=["ARGO_CONTROL", "ARGO_CLASS", "ARGO_DOCUMENT"],
+        pipeline=[
+            "ARGO_CONTROL",
+            "ARGO_CLASS",
+            "ARGO_DOCUMENT",
+        ],
         duracion_ms=duracion_ms,
     )
 
