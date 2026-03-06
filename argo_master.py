@@ -360,36 +360,44 @@ elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
     semaforo_operacion = "🟡"
 else:
     semaforo_operacion = "🟢"
-resumen_global = ResumenGlobal(
-    estatus_global=estatus_global,
-    icono_global=_map_severidad_to_icon(severidad_maxima_global),
-    semaforo_operacion=semaforo_operacion,
-    dictamen_operacion=_dictamen_por_estatus_global(estatus_global),
-    riesgo_global=riesgo_global,
-    score_documental_global=score_documental_global,
-    severidad_maxima_global=severidad_maxima_global,
-    modulos_ejecutados=modulos_ejecutados,
-    modulos_ok=modulos_ok,
-    modulos_con_alertas=modulos_con_alertas,
-    alertas_totales=alertas_totales,
-)
+    resumen_global = ResumenGlobal(
+        estatus_global=estatus_global,
+        icono_global=_map_severidad_to_icon(severidad_maxima_global),
+        semaforo_operacion=semaforo_operacion,
+        dictamen_operacion=_dictamen_por_estatus_global(estatus_global),
+        riesgo_global=riesgo_global,
+        score_documental_global=score_documental_global,
+        severidad_maxima_global=severidad_maxima_global,
+        modulos_ejecutados=modulos_ejecutados,
+        modulos_ok=modulos_ok,
+        modulos_con_alertas=modulos_con_alertas,
+        alertas_totales=alertas_totales,
+    )
 
-meta = MasterMeta(
-    schema=SCHEMA_NAME,
-    version_master=VERSION_MASTER,
-    timestamp_local=_now_iso(),
-    id_operacion=id_operacion,
-    id_cliente=id_cliente,
-    usuario_ejecucion=usuario_ejecucion,
-    origen_ejecucion=origen_ejecucion,
-)
+    meta = MasterMeta(
+        schema=SCHEMA_NAME,
+        version_master=VERSION_MASTER,
+        timestamp_local=_now_iso(),
+        id_operacion=id_operacion,
+        id_cliente=id_cliente,
+        usuario_ejecucion=usuario_ejecucion,
+        origen_ejecucion=origen_ejecucion,
+    )
+
+    modulos = Modulos(
+        control=control_mod,
+        class_=class_mod,
+        document=document_mod,
+    )
+
+    indicadores = Indicadores(
+        control=indicadores_control,
+        class_=indicadores_class,
+        document=indicadores_document,
+    )
 
     trazabilidad = Trazabilidad(
-        pipeline=[
-            "ARGO_CONTROL",
-            "ARGO_CLASS",
-            "ARGO_DOCUMENT",
-        ],
+        pipeline=["ARGO_CONTROL", "ARGO_CLASS", "ARGO_DOCUMENT"],
         duracion_ms=duracion_ms,
     )
 
