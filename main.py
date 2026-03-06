@@ -553,7 +553,31 @@ async def argo_pipeline_clasificar(
         except Exception as cleanup_err:
             print(f"WARNING CLEANUP {id_operacion}: {cleanup_err}")
 
-   
+   @app.post("/argo-document")
+async def ejecutar_argo_document(
+    archivo_xlsx: UploadFile = File(...),
+    id_operacion: Optional[str] = Form(None),
+):
+    temp_input_path = f"temp_{archivo_xlsx.filename}"
+
+    with open(temp_input_path, "wb") as f:
+        f.write(await archivo_xlsx.read())
+
+    plantilla_path = "PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx"
+
+    salida = argo_document_bloque1(
+        input_xlsx_path=temp_input_path,
+        plantilla_path=plantilla_path,
+        outputs_dir="outputs",
+        id_operacion=id_operacion,
+    )
+
+    try:
+        os.remove(temp_input_path)
+    except Exception:
+        pass
+
+    return JSONResponse(content=salida_to_dict(salida))
        
 
   
