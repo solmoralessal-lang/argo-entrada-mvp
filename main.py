@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
+import os
+from typing import Optional
+from fastapi.responses import JSONResponse
 
+from argo_document import argo_document_bloque1, salida_to_dict
 from utils_operacion import generar_id_operacion, escribir_log_operacion
 from openpyxl import load_workbook
 import os
