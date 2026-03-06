@@ -534,27 +534,29 @@ async def argo_pipeline_clasificar(
             print(f"WARNING LOG {id_operacion}: {log_err}")
 
   
-        # 6) ARGO DOCUMENT
+                       # 6) ARGO DOCUMENT
         salida_document = argo_document_bloque1(
             input_xlsx_path=output_path,
             plantilla_path="PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx",
             outputs_dir="outputs",
             id_operacion=id_operacion,
-       
+        )
         document_json = salida_to_dict(salida_document)
+
         master_json = build_master_output({
             "id_operacion": id_operacion,
             "control": control_json,
             "class": salida_class,
             "document": document_json
         })
+
         return {
             "ok": True,
             "modulo": "ARGO_PIPELINE",
             "id_operacion": id_operacion,
             "control": control_json,
             "class": salida_class,
-            "document": document_json
+            "document": document_json,
             "master": master_json
         }
 
