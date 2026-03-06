@@ -361,28 +361,28 @@ elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
 else:
     semaforo_operacion = "🟢"
 resumen_global = ResumenGlobal(
-        estatus_global=estatus_global,
-        icono_global=_map_severidad_to_icon(severidad_maxima_global),
-        semaforo_operacion=semaforo_operacion,
-        dictamen_operacion=_dictamen_por_estatus_global(estatus_global),
-        riesgo_global=riesgo_global,
-        score_documental_global=score_documental_global,
-        severidad_maxima_global=severidad_maxima_global,
-        modulos_ejecutados=modulos_ejecutados,
-        modulos_ok=modulos_ok,
-        modulos_con_alertas=modulos_con_alertas,
-        alertas_totales=alertas_totales,
+    estatus_global=estatus_global,
+    icono_global=_map_severidad_to_icon(severidad_maxima_global),
+    semaforo_operacion=semaforo_operacion,
+    dictamen_operacion=_dictamen_por_estatus_global(estatus_global),
+    riesgo_global=riesgo_global,
+    score_documental_global=score_documental_global,
+    severidad_maxima_global=severidad_maxima_global,
+    modulos_ejecutados=modulos_ejecutados,
+    modulos_ok=modulos_ok,
+    modulos_con_alertas=modulos_con_alertas,
+    alertas_totales=alertas_totales,
 )
 
-    meta = MasterMeta(
-        schema=SCHEMA_NAME,
-        version_master=VERSION_MASTER,
-        timestamp_local=_now_iso(),
-        id_operacion=id_operacion,
-        id_cliente=id_cliente,
-        usuario_ejecucion=usuario_ejecucion,
-        origen_ejecucion=origen_ejecucion,
-    )
+meta = MasterMeta(
+    schema=SCHEMA_NAME,
+    version_master=VERSION_MASTER,
+    timestamp_local=_now_iso(),
+    id_operacion=id_operacion,
+    id_cliente=id_cliente,
+    usuario_ejecucion=usuario_ejecucion,
+    origen_ejecucion=origen_ejecucion,
+)
 
     trazabilidad = Trazabilidad(
         pipeline=[
