@@ -532,14 +532,23 @@ async def argo_pipeline_clasificar(
         except Exception as log_err:
             print(f"WARNING LOG {id_operacion}: {log_err}")
 
-        # 6) Respuesta
+  
+                # 6) ARGO DOCUMENT
+        salida_document = argo_document_bloque1(
+            input_xlsx_path=salida_class["output_path"],
+            plantilla_path="PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx",
+            outputs_dir="outputs",
+            id_operacion=id_operacion,
+        )
+        document_json = salida_to_dict(salida_document)
         return {
-            "ok": True,
-            "modulo": "ARGO_PIPELINE",
-            "id_operacion": id_operacion,
-            "control": control_json,
-            "class": salida_class
-        }
+    "ok": True,
+    "modulo": "ARGO_PIPELINE",
+    "id_operacion": id_operacion,
+    "control": control_json,
+    "class": salida_class,
+    "document": document_json
+}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
