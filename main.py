@@ -553,7 +553,7 @@ async def argo_pipeline_clasificar(
         except Exception as cleanup_err:
             print(f"WARNING CLEANUP {id_operacion}: {cleanup_err}")
 
-   @app.post("/argo-document")
+@app.post("/argo-document")
 async def ejecutar_argo_document(
     archivo_xlsx: UploadFile = File(...),
     id_operacion: Optional[str] = Form(None),
