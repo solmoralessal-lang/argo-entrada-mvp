@@ -533,8 +533,8 @@ async def argo_pipeline_clasificar(
             print(f"WARNING LOG {id_operacion}: {log_err}")
 
   
-                # 6) ARGO DOCUMENT
-                salida_document = argo_document_bloque1(
+        # 6) ARGO DOCUMENT
+        salida_document = argo_document_bloque1(
             input_xlsx_path=output_path,
             plantilla_path="PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx",
             outputs_dir="outputs",
