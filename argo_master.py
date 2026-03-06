@@ -372,7 +372,7 @@ resumen_global = ResumenGlobal(
         modulos_ok=modulos_ok,
         modulos_con_alertas=modulos_con_alertas,
         alertas_totales=alertas_totales,
-    )
+)
 
     meta = MasterMeta(
         schema=SCHEMA_NAME,
