@@ -353,9 +353,17 @@ def build_master_output(
         modulos_ejecutados=modulos_ejecutados,
     )
 
-    resumen_global = ResumenGlobal(
+    # Semáforo de operación
+if riesgo_global == "CRITICO" or severidad_maxima_global == "CRITICA":
+    semaforo_operacion = "🔴"
+elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
+    semaforo_operacion = "🟡"
+else:
+    semaforo_operacion = "🟢"
+resumen_global = ResumenGlobal(
         estatus_global=estatus_global,
         icono_global=_map_severidad_to_icon(severidad_maxima_global),
+        semaforo_operacion=semaforo_operacion,
         dictamen_operacion=_dictamen_por_estatus_global(estatus_global),
         riesgo_global=riesgo_global,
         score_documental_global=score_documental_global,
