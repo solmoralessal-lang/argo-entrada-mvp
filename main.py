@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi.responses import JSONResponse
 
 from argo_document import argo_document_bloque1, salida_to_dict
+from argo_master import build_master_output
 from utils_operacion import generar_id_operacion, escribir_log_operacion
 from openpyxl import load_workbook
 import os
@@ -539,16 +540,23 @@ async def argo_pipeline_clasificar(
             plantilla_path="PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx",
             outputs_dir="outputs",
             id_operacion=id_operacion,
-        )
+       
         document_json = salida_to_dict(salida_document)
+        master_json = build_master_output({
+            "id_operacion": id_operacion,
+            "control": control_json,
+            "class": salida_class,
+            "document": document_json
+        })
         return {
-    "ok": True,
-    "modulo": "ARGO_PIPELINE",
-    "id_operacion": id_operacion,
-    "control": control_json,
-    "class": salida_class,
-    "document": document_json
-}
+            "ok": True,
+            "modulo": "ARGO_PIPELINE",
+            "id_operacion": id_operacion,
+            "control": control_json,
+            "class": salida_class,
+            "document": document_json
+            "master": master_json
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
