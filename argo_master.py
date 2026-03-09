@@ -350,7 +350,28 @@ def build_master_output(
 
     alertas_totales = len(alertas_consolidadas)
     score_documental_global = int(indicadores["class"]["score_documental"])
+    
+        # Índice de riesgo operativo (0-100)
+    riesgo_operativo = 0
 
+    # Base por riesgo de CLASS
+    if class_riesgo == "CRITICO":
+        riesgo_operativo += 60
+    elif class_riesgo == "ALTO":
+        riesgo_operativo += 45
+    elif class_riesgo == "MEDIO":
+        riesgo_operativo += 25
+    else:
+        riesgo_operativo += 10
+
+    # Penalización por alertas
+    riesgo_operativo += min(alertas_totales * 2, 20)
+
+    # Penalización por score documental bajo
+    riesgo_operativo += max(0, round((100 - score_documental_global) * 0.2))
+
+    # Tope
+    riesgo_operativo = min(riesgo_operativo, 100)
     estatus_global = _estatus_global_from_inputs(
         riesgo_global=riesgo_global,
         severidad_maxima_global=severidad_maxima_global,
@@ -358,9 +379,9 @@ def build_master_output(
         modulos_ejecutados=modulos_ejecutados,
     )
 
-    if riesgo_global == "CRITICO" or severidad_maxima_global == "CRITICA":
+        if riesgo_operativo >= 61:
         semaforo_operacion = "🔴"
-    elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
+    elif riesgo_operativo >= 31:
         semaforo_operacion = "🟡"
     else:
         semaforo_operacion = "🟢"
@@ -398,27 +419,28 @@ def build_master_output(
         duracion_ms=duracion_ms,
     )
     panel_operativo = {
-    "operacion": id_operacion,
-    "semaforo": semaforo_operacion,
-    "estatus_global": estatus_global,
-    "riesgo_global": riesgo_global,
-    "score_documental_global": score_documental_global,
-    "alertas_totales": alertas_totales,
-    "modulos": {
-        "control": {
-            "estatus": control.get("estatus"),
-            "icono": control.get("icono")
-        },
-        "class": {
-            "estatus": class_mod.get("estatus"),
-            "icono": class_mod.get("icono")
-        },
-        "document": {
-            "estatus": document.get("estatus"),
-            "icono": document.get("icono")
+        "operacion": id_operacion,
+        "semaforo": semaforo_operacion,
+        "estatus_global": estatus_global,
+        "riesgo_global": riesgo_global,
+        "riesgo_operativo_0_100": riesgo_operativo,
+        "score_documental_global": score_documental_global,
+        "alertas_totales": alertas_totales,
+        "modulos": {
+            "control": {
+                "estatus": control.get("estatus"),
+                "icono": control.get("icono")
+            },
+            "class": {
+                "estatus": class_mod.get("estatus"),
+                "icono": class_mod.get("icono")
+            },
+            "document": {
+                "estatus": document.get("estatus"),
+                "icono": document.get("icono")
+            }
         }
     }
-}
     return {
         "ok": True,
         "modulo": "ARGO_MASTER",
