@@ -127,6 +127,7 @@ class MasterMeta:
 class ResumenGlobal:
     estatus_global: str
     icono_global: str
+    semaforo_operacion: str
     dictamen_operacion: str
     riesgo_global: str
     score_documental_global: int
@@ -165,6 +166,7 @@ def _normalize_class(class_data: Dict[str, Any]) -> Dict[str, Any]:
     salida = _safe_dict(class_data.get("salida"))
     score_documental = _safe_dict(salida.get("score_documental"))
     certeza_y_riesgo = _safe_dict(salida.get("certeza_y_riesgo"))
+    clasificacion = _safe_dict(salida.get("clasificacion"))
 
     riesgo_automatico = certeza_y_riesgo.get("riesgo_automatico", "CRITICO")
     icono = "🔴" if str(riesgo_automatico).upper() == "CRITICO" else "🟠"
@@ -178,8 +180,8 @@ def _normalize_class(class_data: Dict[str, Any]) -> Dict[str, Any]:
             "score_documental": score_documental.get("score_total_0_100", 0),
             "nivel_debida_diligencia": score_documental.get("nivel_debida_diligencia", "INTENSIVA"),
             "riesgo_automatico": riesgo_automatico,
-            "fraccion_sugerida": _safe_dict(salida.get("clasificacion")).get("fraccion_sugerida", "POR_DEFINIR"),
-            "confianza_fraccion_pct": _safe_dict(salida.get("clasificacion")).get("confianza_fraccion_pct", 0),
+            "fraccion_sugerida": clasificacion.get("fraccion_sugerida", "POR_DEFINIR"),
+            "confianza_fraccion_pct": clasificacion.get("confianza_fraccion_pct", 0),
             "certeza_final_pct": certeza_y_riesgo.get("certeza_final_pct", 0),
         },
     }
@@ -208,7 +210,6 @@ def _build_alertas_consolidadas(
 ) -> List[Dict[str, Any]]:
     alertas: List[Dict[str, Any]] = []
 
-    # CONTROL -> resumido
     control_resumen = _safe_dict(control.get("resumen"))
     observaciones_total = int(control_resumen.get("observaciones_total", 0) or 0)
     control_severidad = str(control_resumen.get("severidad_maxima", "BAJA")).upper()
@@ -222,7 +223,6 @@ def _build_alertas_consolidadas(
             "accion_sugerida": "Revisar inconsistencias detectadas por CONTROL.",
         })
 
-    # CLASS -> alertas reales
     class_alertas = _safe_list(
         _safe_dict(_safe_dict(class_data.get("salida")).get("tablas")).get("alertas")
     )
@@ -236,7 +236,6 @@ def _build_alertas_consolidadas(
             "accion_sugerida": a.get("accion_sugerida", ""),
         })
 
-    # DOCUMENT -> alertas reales
     doc_alertas = _safe_list(document.get("alertas"))
     for a in doc_alertas:
         a = _safe_dict(a)
@@ -318,10 +317,16 @@ def build_master_output(
 
     control_sev = str(_safe_dict(control_raw.get("resumen")).get("severidad_maxima", "BAJA")).upper()
     document_sev = str(_safe_dict(document_raw.get("resumen")).get("severidad_maxima", "BAJA")).upper()
-    class_riesgo = str(_safe_dict(_safe_dict(class_raw.get("salida")).get("certeza_y_riesgo")).get("riesgo_automatico", "CRITICO")).upper()
+    class_riesgo = str(
+        _safe_dict(_safe_dict(class_raw.get("salida")).get("certeza_y_riesgo")).get("riesgo_automatico", "CRITICO")
+    ).upper()
 
-    # Traducimos riesgo de class a severidad global compatible
-    class_severidad = "CRITICA" if class_riesgo == "CRITICO" else "ALTA" if class_riesgo == "ALTO" else "MEDIA" if class_riesgo == "MEDIO" else "BAJA"
+    class_severidad = (
+        "CRITICA" if class_riesgo == "CRITICO"
+        else "ALTA" if class_riesgo == "ALTO"
+        else "MEDIA" if class_riesgo == "MEDIO"
+        else "BAJA"
+    )
 
     severidad_maxima_global = _max_severidad(control_sev, document_sev, class_severidad)
     riesgo_global = _max_riesgo(class_riesgo)
@@ -334,8 +339,8 @@ def build_master_output(
 
     modulos_ejecutados = len(modulos)
     modulos_ok = sum(1 for _, m in modulos.items() if m.get("ok") is True)
-    modulos_con_alertas = 0
 
+    modulos_con_alertas = 0
     if int(indicadores["control"]["observaciones_total"]) > 0:
         modulos_con_alertas += 1
     if len(_safe_list(_safe_dict(_safe_dict(class_raw.get("salida")).get("tablas")).get("alertas"))) > 0:
@@ -353,13 +358,12 @@ def build_master_output(
         modulos_ejecutados=modulos_ejecutados,
     )
 
-        # Semáforo de operación
-        if riesgo_global == "CRITICO" or severidad_maxima_global == "CRITICA":
-            semaforo_operacion = "🔴"
-        elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
-            semaforo_operacion = "🟡"
-        else:
-            semaforo_operacion = "🟢"
+    if riesgo_global == "CRITICO" or severidad_maxima_global == "CRITICA":
+        semaforo_operacion = "🔴"
+    elif estatus_global in ["CON_OBSERVACIONES", "REQUIERE_REVISION"]:
+        semaforo_operacion = "🟡"
+    else:
+        semaforo_operacion = "🟢"
 
     resumen_global = ResumenGlobal(
         estatus_global=estatus_global,
