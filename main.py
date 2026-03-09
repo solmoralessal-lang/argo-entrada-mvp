@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from argo_document import argo_document_bloque1, salida_to_dict
 from argo_master import build_master_output
 from argo_history import save_pipeline_to_history, read_history
+from argo_dashboard import build_dashboard_output
 from utils_operacion import generar_id_operacion, escribir_log_operacion
 from openpyxl import load_workbook
 import os
@@ -615,8 +616,13 @@ async def consultar_historial_argo(limit: int = 50):
         "total": len(data),
         "items": data
     }
-  
-   
+
+@app.get("/argo/dashboard")
+async def consultar_dashboard_argo(limit: int = 50):
+    history_items = read_history(limit=limit, logs_dir="logs")
+    dashboard = build_dashboard_output(history_items)
+
+    return dashboard
    
     
   
