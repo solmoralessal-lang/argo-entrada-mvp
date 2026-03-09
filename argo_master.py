@@ -379,7 +379,7 @@ def build_master_output(
         modulos_ejecutados=modulos_ejecutados,
     )
 
-        if riesgo_operativo >= 61:
+    if riesgo_operativo >= 61:
         semaforo_operacion = "🔴"
     elif riesgo_operativo >= 31:
         semaforo_operacion = "🟡"
