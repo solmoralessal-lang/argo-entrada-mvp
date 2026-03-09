@@ -397,7 +397,28 @@ def build_master_output(
         ],
         duracion_ms=duracion_ms,
     )
-
+    panel_operativo = {
+    "operacion": id_operacion,
+    "semaforo": semaforo_operacion,
+    "estatus_global": estatus_global,
+    "riesgo_global": riesgo_global,
+    "score_documental_global": score_documental_global,
+    "alertas_totales": alertas_totales,
+    "modulos": {
+        "control": {
+            "estatus": control.get("estatus"),
+            "icono": control.get("icono")
+        },
+        "class": {
+            "estatus": class_mod.get("estatus"),
+            "icono": class_mod.get("icono")
+        },
+        "document": {
+            "estatus": document.get("estatus"),
+            "icono": document.get("icono")
+        }
+    }
+}
     return {
         "ok": True,
         "modulo": "ARGO_MASTER",
