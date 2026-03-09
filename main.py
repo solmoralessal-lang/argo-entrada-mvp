@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from argo_document import argo_document_bloque1, salida_to_dict
 from argo_master import build_master_output
+from argo_history import save_pipeline_to_history, read_history
 from utils_operacion import generar_id_operacion, escribir_log_operacion
 from openpyxl import load_workbook
 import os
@@ -550,7 +551,7 @@ async def argo_pipeline_clasificar(
             "document": document_json
         })
 
-        return {
+                pipeline_result = {
             "ok": True,
             "modulo": "ARGO_PIPELINE",
             "id_operacion": id_operacion,
@@ -559,6 +560,13 @@ async def argo_pipeline_clasificar(
             "document": document_json,
             "master": master_json
         }
+
+        try:
+            save_pipeline_to_history(pipeline_result, logs_dir="logs")
+        except Exception as history_err:
+            print(f"WARNING HISTORY [{id_operacion}]: {history_err}")
+
+        return pipeline_result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
@@ -598,7 +606,15 @@ async def ejecutar_argo_document(
 
     return JSONResponse(content=salida_to_dict(salida))
        
-
+@app.get("/argo/history")
+async def consultar_historial_argo(limit: int = 50):
+    data = read_history(limit=limit, logs_dir="logs")
+    return {
+        "ok": True,
+        "modulo": "ARGO_HISTORY",
+        "total": len(data),
+        "items": data
+    }
   
    
    
