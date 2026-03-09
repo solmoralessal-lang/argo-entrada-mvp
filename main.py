@@ -551,7 +551,7 @@ async def argo_pipeline_clasificar(
             "document": document_json
         })
 
-                pipeline_result = {
+        pipeline_result = {
             "ok": True,
             "modulo": "ARGO_PIPELINE",
             "id_operacion": id_operacion,
