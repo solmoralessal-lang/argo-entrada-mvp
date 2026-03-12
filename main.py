@@ -572,10 +572,21 @@ async def argo_pipeline_clasificar(
             "master": master_json
         }
 
+                history_save_path = ""
+        history_save_error = ""
+
         try:
-            save_pipeline_to_history(pipeline_result, logs_dir="logs")
+            history_save_path = save_pipeline_to_history(pipeline_result, logs_dir="logs")
+            print(f"HISTORY OK [{id_operacion}] -> {history_save_path}")
         except Exception as history_err:
-            print(f"WARNING HISTORY [{id_operacion}]: {history_err}")
+            history_save_error = str(history_err)
+            print(f"WARNING HISTORY [{id_operacion}]: {history_save_error}")
+
+        pipeline_result["history_debug"] = {
+            "saved": history_save_error == "",
+            "path": history_save_path,
+            "error": history_save_error,
+        }
 
         return pipeline_result
 
