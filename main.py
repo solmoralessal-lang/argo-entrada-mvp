@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os
 from typing import Optional
 from fastapi.responses import JSONResponse
@@ -16,6 +17,15 @@ from datetime import datetime
 from argo_control import argo_control_validar_v2
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
