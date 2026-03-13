@@ -609,7 +609,7 @@ async def argo_pipeline_clasificar(
             "document": document_json
         })
 
-                control_public_url = ""
+        control_public_url = ""
         document_public_url = ""
 
         try:
