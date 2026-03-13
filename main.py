@@ -89,7 +89,19 @@ if not os.path.exists(OUTPUT_FOLDER):
 def home():
     return {"mensaje": "ARGO ENTRADA MVP funcionando"}
 
+@app.get("/descargar/{nombre_archivo}")
+def descargar_archivo(nombre_archivo: str):
+    ruta = os.path.join("outputs", nombre_archivo)
 
+    if not os.path.exists(ruta):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    return FileResponse(
+        path=ruta,
+        filename=nombre_archivo,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    
 def _safe_filename(text: str) -> str:
     text = (text or "").strip()
     text = re.sub(r"\s+", " ", text)
