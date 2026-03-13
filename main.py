@@ -588,7 +588,7 @@ async def argo_pipeline_clasificar(
             "error": history_save_error,
         }
 
-        return pipeline_result        
+return pipeline_result        
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ARGO_PIPELINE error: {str(e)}")
