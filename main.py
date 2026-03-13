@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from typing import Optional
 from fastapi.responses import JSONResponse
+import requests
 
 from argo_document import argo_document_bloque1, salida_to_dict
 from argo_master import build_master_output
@@ -17,6 +18,12 @@ from datetime import datetime
 from argo_control import argo_control_validar_v2
 
 app = FastAPI()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+SUPABASE_BUCKET = "argo-files"
 
 app.add_middleware(
     CORSMiddleware,
@@ -114,6 +121,34 @@ def _clear_sheet(ws, max_rows=200, max_cols=10):
     for r in range(1, max_rows + 1):
         for c in range(1, max_cols + 1):
             ws.cell(row=r, column=c).value = None
+
+def subir_archivo_a_supabase(file_path: str, bucket: str = SUPABASE_BUCKET) -> str:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise Exception("Faltan variables de entorno de Supabase")
+
+    if not os.path.exists(file_path):
+        raise Exception(f"Archivo no existe: {file_path}")
+
+    file_name = os.path.basename(file_path)
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{file_name}"
+
+    with open(file_path, "rb") as f:
+        response = requests.post(
+            upload_url,
+            headers={
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                "apikey": SUPABASE_SERVICE_KEY,
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "x-upsert": "true",
+            },
+            data=f.read(),
+        )
+
+    if response.status_code not in [200, 201]:
+        raise Exception(f"Error subiendo a Supabase: {response.text}")
+
+    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{file_name}"
+    return public_url
 
 @app.post("/entrada/validar")
 def entrada_validar(
@@ -574,6 +609,21 @@ async def argo_pipeline_clasificar(
             "document": document_json
         })
 
+                control_public_url = ""
+        document_public_url = ""
+
+        try:
+            if output_path:
+                control_public_url = subir_archivo_a_supabase(output_path)
+        except Exception as supa_err:
+            print(f"WARNING SUPABASE CONTROL [{id_operacion}]: {supa_err}")
+
+        try:
+            if document_json.get("output_path"):
+                document_public_url = subir_archivo_a_supabase(document_json["output_path"])
+        except Exception as supa_err:
+            print(f"WARNING SUPABASE DOCUMENT [{id_operacion}]: {supa_err}")
+
         pipeline_result = {
             "ok": True,
             "modulo": "ARGO_PIPELINE",
@@ -581,7 +631,11 @@ async def argo_pipeline_clasificar(
             "control": control_json,
             "class": salida_class,
             "document": document_json,
-            "master": master_json
+            "master": master_json,
+            "archivos_publicos": {
+                "control_url": control_public_url,
+                "document_url": document_public_url,
+            }
         }
 
         history_save_path = ""
