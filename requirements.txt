@@ -3,3 +3,4 @@ uvicorn
 openpyxl
 python-multipart
 requests
+openai>=1.0.0
