@@ -32,61 +32,80 @@ from argo_models import AprobarOperacionRequest
 from argo_supabase_historial import aprobar_operacion_supabase
 
 app = FastAPI()
-@app.post("/argo/ocr")
-async def argo_ocr(files: list[UploadFile] = File(...)):
-    nombres = [f.filename for f in files]
+
+from openai import OpenAI
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def convertir_a_base64(file_bytes):
+    return base64.b64encode(file_bytes).decode("utf-8")
 
 @app.post("/argo/ocr")
 async def argo_ocr(files: list[UploadFile] = File(...)):
-    nombres = [f.filename for f in files]
+    try:
+        resultados = []
 
- 8e417e2 (add endpoint argo ocr FINAL)
-    return {
-        "ok": True,
-        "total_archivos": len(files),
-        "detalle_archivos": nombres,
-        "ocr": {
-            "cliente": "PRUEBA",
-            "proveedor": "PRUEBA",
-            "paqueteria": "PRUEBA",
-            "tracking": "PRUEBA"
-        },
-        "argo": {
-            "estado": "PRUEBA_OK",
-            "faltantes": [],
-            "entrada_generada": {
-                "archivos_recibidos": nombres
-            }
+        for file in files:
+            contenido = await file.read()
+            imagen_base64 = convertir_a_base64(contenido)
+
+            response = client.responses.create(
+                model="gpt-5.4",
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": """
+Eres un sistema OCR experto en logística.
+
+Extrae SOLO en formato JSON:
+
+{
+  "cliente": "",
+  "proveedor": "",
+  "paqueteria": "",
+  "tracking": "",
+  "descripcion": "",
+  "cantidad_bultos": null,
+  "peso_total": null,
+  "peso_unidad": "",
+  "direccion_origen": "",
+  "direccion_destino": ""
+}
+
+Reglas:
+- No inventar datos
+- Si no se ve → null
+- tracking = número principal
+- paqueteria = FedEx, UPS, DHL, etc
+"""},
+
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/jpeg;base64,{imagen_base64}",
+                            },
+                        ],
+                    }
+                ],
+            )
+
+            texto = response.output_text
+
+            resultados.append({
+                "archivo": file.filename,
+                "ocr_raw": texto
+            })
+
+        return {
+            "ok": True,
+            "total_archivos": len(files),
+            "resultados": resultados
         }
-    }
-8e417e2 (add endpoint argo ocr FINAL)
-# 🔷 Primero crear carpeta
-if not os.path.exists("outputs"):
-    os.makedirs("outputs")
 
-@app.post("/argo/ocr")
-async def argo_ocr(files: list[UploadFile] = File(...)):
-    nombres = [f.filename for f in files]
-
-    return {
-        "ok": True,
-        "total_archivos": len(files),
-        "detalle_archivos": nombres,
-        "ocr": {
-            "cliente": "PRUEBA",
-            "proveedor": "PRUEBA",
-            "paqueteria": "PRUEBA",
-            "tracking": "PRUEBA"
-        },
-        "argo": {
-            "estado": "PRUEBA_OK",
-            "faltantes": [],
-            "entrada_generada": {
-                "archivos_recibidos": nombres
-            }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
         }
-    }
-    
 # 🔷 Luego exponerla
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
