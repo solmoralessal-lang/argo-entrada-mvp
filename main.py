@@ -39,7 +39,7 @@ if not os.path.exists("outputs"):
 
 # 🔷 Luego exponerla
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
-app.mount("/", StaticFiles(directory="public", html=True), name="frontend")
+app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
