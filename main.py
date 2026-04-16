@@ -32,11 +32,15 @@ from argo_models import AprobarOperacionRequest
 from argo_supabase_historial import aprobar_operacion_supabase
 
 app = FastAPI()
+@app.post("/argo/ocr")
+async def argo_ocr(files: list[UploadFile] = File(...)):
+    nombres = [f.filename for f in files]
 
 @app.post("/argo/ocr")
 async def argo_ocr(files: list[UploadFile] = File(...)):
     nombres = [f.filename for f in files]
 
+ 8e417e2 (add endpoint argo ocr FINAL)
     return {
         "ok": True,
         "total_archivos": len(files),
@@ -55,7 +59,7 @@ async def argo_ocr(files: list[UploadFile] = File(...)):
             }
         }
     }
-
+8e417e2 (add endpoint argo ocr FINAL)
 # 🔷 Primero crear carpeta
 if not os.path.exists("outputs"):
     os.makedirs("outputs")
