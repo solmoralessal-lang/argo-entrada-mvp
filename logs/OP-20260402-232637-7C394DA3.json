@@ -1,0 +1,105 @@
+{
+  "id_operacion": "OP-20260402-232637-7C394DA3",
+  "logged_at_utc": "2026-04-02T23:26:37.464901+00:00",
+  "modulo": "ARGO_PIPELINE",
+  "inputs": {
+    "entrada_path": "temp_entrada_limpia.xlsx",
+    "plantilla_control_path": "temp_PLANTILLA_CONTROL.xlsx",
+    "descripcion": "Refacciones para carros de golf (kit de mantenimiento), con soporte documental completo."
+  },
+  "outputs": {
+    "control_output_path": "outputs/OP-20260402-232637-7C394DA3_ARGO_CONTROL_CON_OBSERVACIONES_04022026.xlsx",
+    "class_output_path": null
+  },
+  "control": {
+    "estatus": "CON_OBSERVACIONES",
+    "icono": "🟡",
+    "resumen": {
+      "observaciones_total": 3,
+      "severidad_maxima": "MEDIA",
+      "dictamen": "CON_OBSERVACIONES"
+    }
+  },
+  "class": {
+    "meta": {
+      "schema": "ARGO_CLASS_OUTPUT_V2026",
+      "id_operacion": "OP-20260402-232637-7C394DA3",
+      "id_shipment": null,
+      "id_item": null,
+      "hash_input": "39d4a42a447adbb09ed4805349d96d120555b80ba84bdf75db4dd29335aae4ba"
+    },
+    "salida": {
+      "sector_ia": {
+        "sector_detectado": "OTRO",
+        "confianza_sector_pct": 50,
+        "posible_multisector": false,
+        "justificacion": [
+          "sin coincidencias fuertes"
+        ]
+      },
+      "score_documental": {
+        "score_total_0_100": 27,
+        "nivel_debida_diligencia": "INTENSIVA",
+        "bloques": {
+          "identificacion_tecnica_0_40": 22,
+          "soporte_tecnico_0_35": 0,
+          "congruencia_control_0_25": 15,
+          "penalizaciones_por_faltantes": 10
+        },
+        "control_influencia": {
+          "consistencia_pct": null,
+          "severidad_maxima": "MEDIA",
+          "dictamen": "CON_OBSERVACIONES",
+          "observaciones_total": 3,
+          "penalizacion_aplicada": 10
+        }
+      },
+      "clasificacion": {
+        "fraccion_sugerida": "POR_DEFINIR",
+        "descripcion_fraccion": "Sin coincidencias suficientes para sugerir fracción.",
+        "metodo_clasificacion": "REGLAS_BLOQUE2",
+        "confianza_fraccion_pct": 0,
+        "candidatos": []
+      },
+      "certeza_y_riesgo": {
+        "certeza_base_pct": 27,
+        "certeza_final_pct": 27,
+        "riesgo_automatico": "CRITICO"
+      },
+      "tablas": {
+        "alertas": [
+          {
+            "nivel": "ADVERTENCIA",
+            "codigo": "CLASS_SECTOR_BAJA",
+            "mensaje": "Confianza sectorial baja (45–69%).",
+            "accion_sugerida": "Reforzar evidencia técnica de función/material.",
+            "modulo_origen": "SECTOR_IA"
+          },
+          {
+            "nivel": "CRITICA",
+            "codigo": "CLASS_SCORE_CRITICO",
+            "mensaje": "Score documental crítico (<45).",
+            "accion_sugerida": "Aportar soporte técnico robusto.",
+            "modulo_origen": "SCORING"
+          },
+          {
+            "nivel": "ADVERTENCIA",
+            "codigo": "CLASS_CONTROL_HALLAZGOS",
+            "mensaje": "ARGO CONTROL reporta 3 observación(es). Severidad: MEDIA.",
+            "accion_sugerida": "Revisar y corregir inconsistencias del módulo CONTROL antes de dictaminar.",
+            "modulo_origen": "ARGO_CONTROL"
+          }
+        ],
+        "datos_faltantes": []
+      },
+      "advertencia_juridica": {
+        "nivel": "CRITICA",
+        "texto": "Clasificación/certeza calculadas según documentación proporcionada; el criterio final corresponde al usuario/cliente.",
+        "fundamento": [
+          "ART_54_LA_REFORMADO",
+          "CIRCULAR_T_0250_2025"
+        ]
+      }
+    }
+  }
+}
