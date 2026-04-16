@@ -33,10 +33,56 @@ from argo_supabase_historial import aprobar_operacion_supabase
 
 app = FastAPI()
 
+@app.post("/argo/ocr")
+async def argo_ocr(files: list[UploadFile] = File(...)):
+    nombres = [f.filename for f in files]
+
+    return {
+        "ok": True,
+        "total_archivos": len(files),
+        "detalle_archivos": nombres,
+        "ocr": {
+            "cliente": "PRUEBA",
+            "proveedor": "PRUEBA",
+            "paqueteria": "PRUEBA",
+            "tracking": "PRUEBA"
+        },
+        "argo": {
+            "estado": "PRUEBA_OK",
+            "faltantes": [],
+            "entrada_generada": {
+                "archivos_recibidos": nombres
+            }
+        }
+    }
+
 # 🔷 Primero crear carpeta
 if not os.path.exists("outputs"):
     os.makedirs("outputs")
 
+@app.post("/argo/ocr")
+async def argo_ocr(files: list[UploadFile] = File(...)):
+    nombres = [f.filename for f in files]
+
+    return {
+        "ok": True,
+        "total_archivos": len(files),
+        "detalle_archivos": nombres,
+        "ocr": {
+            "cliente": "PRUEBA",
+            "proveedor": "PRUEBA",
+            "paqueteria": "PRUEBA",
+            "tracking": "PRUEBA"
+        },
+        "argo": {
+            "estado": "PRUEBA_OK",
+            "faltantes": [],
+            "entrada_generada": {
+                "archivos_recibidos": nombres
+            }
+        }
+    }
+    
 # 🔷 Luego exponerla
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
