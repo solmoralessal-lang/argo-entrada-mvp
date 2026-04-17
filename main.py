@@ -973,6 +973,8 @@ async def argo_ocr(
     archivo4: UploadFile = File(None),
     archivo5: UploadFile = File(None),
 ):
+    import json
+
     resultados = []
     errores = []
 
@@ -1004,16 +1006,16 @@ Eres un sistema OCR experto en logística.
 Extrae SOLO en formato JSON:
 
 {
-  "cliente": "",
-  "proveedor": "",
-  "paqueteria": "",
-  "tracking": "",
-  "descripcion": "",
+  "cliente": null,
+  "proveedor": null,
+  "paqueteria": null,
+  "tracking": null,
+  "descripcion": null,
   "cantidad_bultos": null,
   "peso_total": null,
-  "peso_unidad": "",
-  "direccion_origen": "",
-  "direccion_destino": ""
+  "peso_unidad": null,
+  "direccion_origen": null,
+  "direccion_destino": null
 }
 
 Reglas:
@@ -1021,6 +1023,7 @@ Reglas:
 - Si no se ve -> null
 - tracking = número principal
 - paqueteria = FedEx, UPS, DHL, etc
+- responde solo JSON válido
 """
                             },
                             {
@@ -1032,9 +1035,28 @@ Reglas:
                 ],
             )
 
+            texto = response.output_text.strip()
+
+            try:
+                ocr_json = json.loads(texto)
+            except Exception:
+                ocr_json = {
+                    "cliente": None,
+                    "proveedor": None,
+                    "paqueteria": None,
+                    "tracking": None,
+                    "descripcion": None,
+                    "cantidad_bultos": None,
+                    "peso_total": None,
+                    "peso_unidad": None,
+                    "direccion_origen": None,
+                    "direccion_destino": None
+                }
+
             resultados.append({
                 "archivo": file.filename,
-                "ocr_raw": response.output_text
+                "ocr_raw": texto,
+                "ocr_json": ocr_json
             })
 
         except Exception as e:
@@ -1043,13 +1065,49 @@ Reglas:
                 "error": str(e)
             })
 
+    consolidado = {
+        "cliente": None,
+        "proveedor": None,
+        "paqueteria": None,
+        "tracking": None,
+        "descripcion": None,
+        "cantidad_bultos": None,
+        "peso_total": None,
+        "peso_unidad": None,
+        "direccion_origen": None,
+        "direccion_destino": None
+    }
+
+    for item in resultados:
+        data = item.get("ocr_json", {})
+
+        for campo in consolidado.keys():
+            valor_actual = consolidado[campo]
+            valor_nuevo = data.get(campo)
+
+            if valor_actual in [None, "", "null"] and valor_nuevo not in [None, "", "null"]:
+                consolidado[campo] = valor_nuevo
+
+            elif campo == "descripcion":
+                if isinstance(valor_nuevo, str) and valor_nuevo.strip():
+                    if not valor_actual or len(valor_nuevo) > len(str(valor_actual)):
+                        consolidado[campo] = valor_nuevo
+
+            elif campo == "cantidad_bultos":
+                if valor_actual in [None, "", "null"] and valor_nuevo is not None:
+                    consolidado[campo] = valor_nuevo
+
+            elif campo == "peso_total":
+                if valor_actual in [None, "", "null"] and valor_nuevo is not None:
+                    consolidado[campo] = valor_nuevo
+
     return {
         "ok": len(resultados) > 0,
         "total_archivos": len(archivos_validos),
         "procesados": len(resultados),
         "errores": errores,
+        "consolidado": consolidado,
         "resultados": resultados
     }
-
 
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
