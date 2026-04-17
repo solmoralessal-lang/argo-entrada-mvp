@@ -1078,7 +1078,7 @@ Reglas:
         "direccion_destino": None
     }
 
-            for item in resultados:
+        for item in resultados:
         data = item.get("ocr_json", {})
         nombre_archivo = item.get("archivo", "").lower()
 
