@@ -1078,61 +1078,61 @@ Reglas:
         "direccion_destino": None
     }
 
-    for item in resultados:
-    data = item.get("ocr_json", {})
-    nombre_archivo = item.get("archivo", "").lower()
+            for item in resultados:
+        data = item.get("ocr_json", {})
+        nombre_archivo = item.get("archivo", "").lower()
 
-    prioridad = 1
-
-    if "invoice" in nombre_archivo or "packing" in nombre_archivo:
-        prioridad = 3
-    elif "paqueteria" in nombre_archivo or "label" in nombre_archivo:
-        prioridad = 2
-    elif "producto" in nombre_archivo:
         prioridad = 1
 
-    for campo in consolidado.keys():
-        valor_actual = consolidado[campo]
-        valor_nuevo = data.get(campo)
+        if "invoice" in nombre_archivo or "packing" in nombre_archivo:
+            prioridad = 3
+        elif "paqueteria" in nombre_archivo or "label" in nombre_archivo:
+            prioridad = 2
+        elif "producto" in nombre_archivo:
+            prioridad = 1
 
-        if not valor_nuevo:
-            continue
+        for campo in consolidado.keys():
+            valor_actual = consolidado[campo]
+            valor_nuevo = data.get(campo)
 
-        # CLIENTE → priorizar packing/invoice
-        if campo == "cliente":
-            if prioridad >= 3:
+            if not valor_nuevo:
+                continue
+
+            # CLIENTE → priorizar packing/invoice
+            if campo == "cliente":
+                if prioridad >= 3:
+                    consolidado[campo] = valor_nuevo
+
+            # TRACKING → priorizar paquetería
+            elif campo == "tracking":
+                if prioridad >= 2:
+                    consolidado[campo] = valor_nuevo
+
+            # CANTIDAD → interpretar "2 OF 3"
+            elif campo == "cantidad_bultos":
+                if isinstance(valor_nuevo, str) and "OF" in valor_nuevo.upper():
+                    try:
+                        total = int(valor_nuevo.upper().split("OF")[1].strip())
+                        consolidado[campo] = total
+                    except:
+                        pass
+                elif consolidado[campo] is None:
+                    consolidado[campo] = valor_nuevo
+
+            # PESO
+            elif campo == "peso_unidad":
+                if "LBS" in str(valor_nuevo).upper():
+                    consolidado["peso_total"] = int(''.join(filter(str.isdigit, valor_nuevo)))
+                    consolidado["peso_unidad"] = "LBS"
+
+            # DESCRIPCIÓN → la más larga
+            elif campo == "descripcion":
+                if not valor_actual or len(valor_nuevo) > len(str(valor_actual)):
+                    consolidado[campo] = valor_nuevo
+
+            # DEFAULT
+            elif consolidado[campo] in [None, "", "null"]:
                 consolidado[campo] = valor_nuevo
-
-        # TRACKING → priorizar paquetería
-        elif campo == "tracking":
-            if prioridad >= 2:
-                consolidado[campo] = valor_nuevo
-
-        # CANTIDAD → interpretar "2 OF 3"
-        elif campo == "cantidad_bultos":
-            if isinstance(valor_nuevo, str) and "OF" in valor_nuevo.upper():
-                try:
-                    total = int(valor_nuevo.upper().split("OF")[1].strip())
-                    consolidado[campo] = total
-                except:
-                    pass
-            elif consolidado[campo] is None:
-                consolidado[campo] = valor_nuevo
-
-        # PESO
-        elif campo == "peso_unidad":
-            if "LBS" in str(valor_nuevo).upper():
-                consolidado["peso_total"] = int(''.join(filter(str.isdigit, valor_nuevo)))
-                consolidado["peso_unidad"] = "LBS"
-
-        # DESCRIPCIÓN → la más larga
-        elif campo == "descripcion":
-            if not valor_actual or len(valor_nuevo) > len(str(valor_actual)):
-                consolidado[campo] = valor_nuevo
-
-        # DEFAULT
-        elif consolidado[campo] in [None, "", "null"]:
-            consolidado[campo] = valor_nuevo
 
     return {
         "ok": len(resultados) > 0,
