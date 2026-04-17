@@ -138,9 +138,14 @@ def health():
 
 @app.get("/descargar/{nombre_archivo}")
 def descargar_archivo(nombre_archivo: str):
-    ruta = os.path.join("outputs", nombre_archivo)
+    ruta_salidas = os.path.join("salidas", nombre_archivo)
+    ruta_outputs = os.path.join("outputs", nombre_archivo)
 
-    if not os.path.exists(ruta):
+    if os.path.exists(ruta_salidas):
+        ruta = ruta_salidas
+    elif os.path.exists(ruta_outputs):
+        ruta = ruta_outputs
+    else:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
     return FileResponse(
