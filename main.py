@@ -132,8 +132,8 @@ if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
 
 
-@app.get("/")
-def home():
+@app.get("/health")
+def health():
     return {"mensaje": "ARGO ENTRADA MVP funcionando"}
 
 @app.get("/descargar/{nombre_archivo}")
