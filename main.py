@@ -39,7 +39,6 @@ if not os.path.exists("outputs"):
 
 # 🔷 Luego exponerla
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
-app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -942,33 +941,29 @@ async def endpoint_clientes():
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(cliente_id: str = Query(default=None)):
     return obtener_dashboard_desde_historial(cliente_id)
-
+    
 from openai import OpenAI
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-def convertir_a_base64(file_bytes):
-    return base64.b64encode(file_bytes).decode("utf-8")
-
-from typing import Optional, List
-
-from openai import OpenAI
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-def convertir_a_base64(file_bytes):
-    return base64.b64encode(file_bytes).decode("utf-8")
-
-from fastapi import UploadFile, File
-from openai import OpenAI
-import base64
-import os
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def convertir_a_base64(file_bytes):
     return base64.b64encode(file_bytes).decode("utf-8")
 
-from typing import Optional, List
-from typing_extensions import Annotated
+
+@app.get("/argo/historial")
+async def endpoint_historial(cliente_id: str = Query(default=None)):
+    return obtener_historial(cliente_id)
+
+
+@app.get("/argo/clientes")
+async def endpoint_clientes():
+    return obtener_clientes_supabase()
+
+
+@app.get("/argo/dashboard")
+async def endpoint_dashboard(cliente_id: str = Query(default=None)):
+    return obtener_dashboard_desde_historial(cliente_id)
+
 
 @app.post("/argo/ocr")
 async def argo_ocr(
@@ -993,7 +988,7 @@ async def argo_ocr(
     for file in archivos_validos:
         try:
             contenido = await file.read()
-            imagen_base64 = base64.b64encode(contenido).decode("utf-8")
+            imagen_base64 = convertir_a_base64(contenido)
 
             response = client.responses.create(
                 model="gpt-5.4",
@@ -1055,3 +1050,6 @@ Reglas:
         "errores": errores,
         "resultados": resultados
     }
+
+
+app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
