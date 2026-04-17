@@ -1251,4 +1251,179 @@ async def argo_procesar_desde_ocr(payload: dict = Body(...)):
         "control": control_stub
     }
 
+@app.post("/argo/generar_desde_ocr")
+async def argo_generar_desde_ocr(payload: dict = Body(...)):
+    ocr = payload.get("ocr") or payload
+
+    cliente = ocr.get("cliente") or "No legible"
+    proveedor = ocr.get("proveedor") or "No legible"
+    paqueteria = ocr.get("paqueteria") or "No legible"
+    tracking = ocr.get("tracking") or "No legible"
+    descripcion = ocr.get("descripcion") or "No legible"
+    cantidad_bultos = ocr.get("cantidad_bultos")
+    peso_total = ocr.get("peso_total")
+    peso_unidad = ocr.get("peso_unidad") or "No legible"
+    direccion_origen = ocr.get("direccion_origen") or "No legible"
+    direccion_destino = ocr.get("direccion_destino") or "No legible"
+
+    shipment_id = tracking if tracking != "No legible" else f"OCR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
+
+    cantidad = str(cantidad_bultos) if cantidad_bultos not in [None, "", "null"] else "No legible"
+    peso_total_str = str(peso_total) if peso_total not in [None, "", "null"] else "No legible"
+
+    entrada = {
+        "shipment_id": shipment_id,
+        "fecha_recepcion": fecha_recepcion,
+        "cliente": cliente,
+        "proveedor": proveedor,
+        "paqueteria": paqueteria,
+        "tracking": tracking,
+        "descripcion": descripcion,
+        "marca": "No legible",
+        "modelo": "No legible",
+        "no_parte": "No legible",
+        "no_lote": "No legible",
+        "no_serie": "No legible",
+        "cantidad": cantidad,
+        "unidad": peso_unidad,
+        "peso_total": peso_total_str,
+        "pais_origen": "No legible",
+        "direccion_origen": direccion_origen,
+        "direccion_destino": direccion_destino
+    }
+
+    faltantes = []
+    alertas = []
+
+    for campo, valor in entrada.items():
+        if valor == "No legible":
+            faltantes.append({
+                "campo": campo,
+                "valor": valor
+            })
+
+    estado = "OK"
+    severidad_maxima = "NINGUNA"
+
+    if len(faltantes) > 0:
+        estado = "ADVERTENCIA"
+        severidad_maxima = "MEDIA"
+
+    control_stub = argo_control_validar({
+        "version": "1.0",
+        "modulo": "ARGO_ENTRADA",
+        "entrada": entrada
+    })
+
+    wb = load_workbook(TEMPLATE_FILE)
+    ws = wb["Entrada"]
+
+    tracking_original = (tracking or "").strip()
+    tracking_texto = tracking_original
+
+    if (
+        tracking_texto.lower().endswith("e")
+        or "e+" in tracking_texto.lower()
+        or "e-" in tracking_texto.lower()
+    ):
+        tracking_texto = "No legible"
+
+    ws["B2"] = shipment_id
+    ws["B3"] = fecha_recepcion
+    ws["B4"] = cliente
+    ws["B5"] = proveedor
+    ws["B6"] = paqueteria
+
+    ws["B7"].number_format = "@"
+    ws["B7"] = tracking_texto
+
+    ws["B8"] = descripcion
+    ws["B9"] = entrada["marca"]
+    ws["B10"] = entrada["modelo"]
+    ws["B11"] = entrada["no_parte"]
+    ws["B12"] = entrada["no_lote"]
+    ws["B13"] = entrada["no_serie"]
+    ws["B14"] = cantidad
+    ws["B15"] = peso_unidad
+    ws["B16"] = peso_total_str
+    ws["B17"] = entrada["pais_origen"]
+
+    ws_df = wb["Datos faltantes"]
+    _clear_sheet(ws_df)
+    ws_df["A1"] = "Campo"
+    ws_df["B1"] = "Valor"
+
+    fila = 2
+    for item in faltantes:
+        ws_df[f"A{fila}"] = item["campo"]
+        ws_df[f"B{fila}"] = item["valor"]
+        fila += 1
+
+    ws_al = wb["Alertas"]
+    _clear_sheet(ws_al)
+    ws_al["A1"] = "Alerta"
+    ws_al["B1"] = "Detalle"
+    ws_al["C1"] = "Severidad"
+
+    fila = 2
+    for alerta in alertas:
+        ws_al[f"A{fila}"] = alerta.get("alerta", "")
+        ws_al[f"B{fila}"] = alerta.get("detalle", "")
+        ws_al[f"C{fila}"] = alerta.get("severidad", "")
+        fila += 1
+
+    ws_res = wb["Resumen operativo"]
+    _clear_sheet(ws_res)
+    ws_res["A1"] = "Item"
+    ws_res["B1"] = "Valor"
+
+    resumen = [
+        ("Fecha recepción", fecha_recepcion),
+        ("Cliente", cliente),
+        ("Proveedor", proveedor),
+        ("Paquetería", paqueteria),
+        ("Tracking", tracking_texto),
+        ("Shipment ID", shipment_id),
+        ("País origen", entrada["pais_origen"]),
+        ("Faltantes (#)", len(faltantes)),
+        ("Alertas (#)", len(alertas)),
+        ("Estado", estado),
+        ("Severidad máxima", severidad_maxima),
+    ]
+
+    fila = 2
+    for item, valor in resumen:
+        ws_res[f"A{fila}"] = item
+        ws_res[f"B{fila}"] = valor
+        fila += 1
+
+    cliente_archivo = _safe_filename(cliente)
+    ult4 = (tracking_original[-4:] if len(tracking_original) >= 4 else tracking_original) or "XXXX"
+
+    output_name = f"ENTRADA_OCR_{cliente_archivo}_{ult4}.xlsx"
+    output_path = os.path.join(OUTPUT_FOLDER, output_name)
+
+    wb.save(output_path)
+
+    return {
+        "ok": True,
+        "version": "1.0",
+        "modulo": "ARGO_GENERAR_DESDE_OCR",
+        "estado": estado,
+        "severidad_maxima": severidad_maxima,
+        "conteo": {
+            "faltantes": len(faltantes),
+            "alertas": len(alertas)
+        },
+        "faltantes": faltantes,
+        "alertas": alertas,
+        "ocr_consolidado": ocr,
+        "entrada": entrada,
+        "control": control_stub,
+        "archivo_generado": output_name,
+        "ruta_archivo": output_path,
+        "descarga": f"/descargar/{output_name}"
+    }
+
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
