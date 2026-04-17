@@ -951,47 +951,111 @@ from openai import OpenAI
 
 @app.post("/argo/ocr")
 async def argo_ocr(files: List[UploadFile] = File(...)):
-    try:
-        resultados = []
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    resultados = []
+    errores = []
 
-        for file in files:
+    for file in files:
+        temp_path = None
+
+        try:
             contenido = await file.read()
-            b64 = base64.b64encode(contenido).decode("utf-8")
+            content_type = (file.content_type or "").lower()
+            filename = file.filename or "archivo_sin_nombre"
+            ext = filename.lower().split(".")[-1] if "." in filename else ""
 
-            response = client.responses.create(
-                model="gpt-5.4",
-                input=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": "Extrae la información logística en JSON puro."},
-                            {
-                                "type": "input_image",
-                                "image_url": f"data:image/jpeg;base64,{b64}"
-                            }
-                        ]
-                    }
-                ]
+            prompt_text = (
+                "Extrae la información logística visible y responde SOLO en JSON puro. "
+                "No inventes datos. Si un dato no es visible, usa null. "
+                "Campos esperados: cliente, proveedor, paqueteria, tracking, descripcion, "
+                "cantidad_bultos, peso_total, peso_unidad, referencia, direccion_origen, direccion_destino."
             )
 
+            # ===== PDF =====
+            if content_type == "application/pdf" or ext == "pdf":
+                temp_path = f"temp_{filename}"
+                with open(temp_path, "wb") as f:
+                    f.write(contenido)
+
+                uploaded = client.files.create(
+                    file=open(temp_path, "rb"),
+                    purpose="user_data"
+                )
+
+                response = client.responses.create(
+                    model="gpt-5.4",
+                    input=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_file",
+                                    "file_id": uploaded.id
+                                },
+                                {
+                                    "type": "input_text",
+                                    "text": prompt_text
+                                }
+                            ]
+                        }
+                    ]
+                )
+
+            # ===== IMAGEN =====
+            elif content_type.startswith("image/") or ext in ["jpg", "jpeg", "png", "webp"]:
+                mime = content_type if content_type.startswith("image/") else f"image/{ext}"
+                if mime == "image/jpg":
+                    mime = "image/jpeg"
+
+                b64 = base64.b64encode(contenido).decode("utf-8")
+
+                response = client.responses.create(
+                    model="gpt-5.4",
+                    input=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": prompt_text},
+                                {
+                                    "type": "input_image",
+                                    "image_url": f"data:{mime};base64,{b64}"
+                                }
+                            ]
+                        }
+                    ]
+                )
+
+            else:
+                raise Exception(f"Tipo de archivo no soportado: {filename} ({content_type})")
+
             resultados.append({
-                "archivo": file.filename,
+                "archivo": filename,
+                "content_type": content_type,
                 "ocr_raw": response.output_text
             })
 
-        return {
-            "ok": True,
-            "archivos_procesados": len(resultados),
-            "resultados": resultados
-        }
+        except Exception as e:
+            errores.append({
+                "archivo": file.filename,
+                "content_type": file.content_type,
+                "error": str(e)
+            })
 
-    except Exception as e:
-        return {
-            "ok": False,
-            "error": str(e)
-        }
+        finally:
+            try:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+
+    return {
+        "ok": len(resultados) > 0,
+        "archivos_recibidos": len(files),
+        "archivos_procesados": len(resultados),
+        "errores": errores,
+        "resultados": resultados
+    }
     
   
 
