@@ -9,7 +9,6 @@ import hashlib
 from typing import List
 from fastapi.responses import JSONResponse
 import requests
-from typing import List
 
 from argo_document import argo_document_bloque1, salida_to_dict
 from argo_master import build_master_output
@@ -958,6 +957,16 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def convertir_a_base64(file_bytes):
     return base64.b64encode(file_bytes).decode("utf-8")
 
+from fastapi import UploadFile, File
+from openai import OpenAI
+import base64
+import os
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def convertir_a_base64(file_bytes):
+    return base64.b64encode(file_bytes).decode("utf-8")
+
 @app.post("/argo/ocr")
 async def argo_ocr(files: List[UploadFile] = File(...)):
     resultados = []
@@ -976,30 +985,7 @@ async def argo_ocr(files: List[UploadFile] = File(...)):
                         "content": [
                             {
                                 "type": "input_text",
-                                "text": """
-Eres un sistema OCR experto en logística.
-
-Extrae SOLO en formato JSON:
-
-{
-  "cliente": "",
-  "proveedor": "",
-  "paqueteria": "",
-  "tracking": "",
-  "descripcion": "",
-  "cantidad_bultos": null,
-  "peso_total": null,
-  "peso_unidad": "",
-  "direccion_origen": "",
-  "direccion_destino": ""
-}
-
-Reglas:
-- No inventar datos
-- Si no se ve -> null
-- tracking = número principal
-- paqueteria = FedEx, UPS, DHL, etc
-"""
+                                "text": "Extrae la información logística en JSON puro."
                             },
                             {
                                 "type": "input_image",
@@ -1010,11 +996,9 @@ Reglas:
                 ],
             )
 
-            texto = response.output_text
-
             resultados.append({
                 "archivo": file.filename,
-                "ocr_raw": texto
+                "ocr_raw": response.output_text
             })
 
         except Exception as e:
@@ -1030,5 +1014,4 @@ Reglas:
         "errores": errores,
         "resultados": resultados
     }
-
    
