@@ -1088,33 +1088,39 @@ Reglas:
         data = item.get("ocr_json", {})
         nombre_archivo = item.get("archivo", "").lower()
 
-        prioridad = 1
+        prioridad_general = 1
+        prioridad_cliente_proveedor = 1
+        prioridad_tracking_paqueteria = 1
 
         if "invoice" in nombre_archivo or "packing" in nombre_archivo:
-            prioridad = 3
-        elif "paqueteria" in nombre_archivo or "label" in nombre_archivo:
-            prioridad = 2
-        elif "producto" in nombre_archivo:
-            prioridad = 1
+            prioridad_general = 3
+            prioridad_cliente_proveedor = 3
+
+        if "paqueteria" in nombre_archivo or "label" in nombre_archivo:
+            prioridad_tracking_paqueteria = 3
 
         for campo in consolidado.keys():
             valor_actual = consolidado[campo]
             valor_nuevo = data.get(campo)
 
-            if not valor_nuevo:
+            if valor_nuevo in [None, "", "null"]:
                 continue
 
-            # CLIENTE (prioridad alta: packing/invoice)
-            if campo == "cliente":
-                if prioridad >= 3:
+            # CLIENTE / PROVEEDOR
+            if campo in ["cliente", "proveedor"]:
+                if prioridad_cliente_proveedor >= 3:
+                    consolidado[campo] = valor_nuevo
+                elif consolidado[campo] in [None, "", "null"]:
                     consolidado[campo] = valor_nuevo
 
-            # TRACKING (prioridad paquetería)
-            elif campo == "tracking":
-                if prioridad >= 2:
+            # TRACKING / PAQUETERIA
+            elif campo in ["tracking", "paqueteria"]:
+                if prioridad_tracking_paqueteria >= 3:
+                    consolidado[campo] = valor_nuevo
+                elif consolidado[campo] in [None, "", "null"]:
                     consolidado[campo] = valor_nuevo
 
-            # CANTIDAD (interpretar "2 OF 3")
+            # CANTIDAD
             elif campo == "cantidad_bultos":
                 if isinstance(valor_nuevo, str) and "OF" in valor_nuevo.upper():
                     try:
@@ -1125,17 +1131,29 @@ Reglas:
                 elif consolidado[campo] is None:
                     consolidado[campo] = valor_nuevo
 
-            # PESO
-            elif campo == "peso_unidad":
-                if "LBS" in str(valor_nuevo).upper():
-                    numeros = ''.join(filter(str.isdigit, str(valor_nuevo)))
-                    if numeros:
-                        consolidado["peso_total"] = int(numeros)
-                        consolidado["peso_unidad"] = "LBS"
+            # PESO TOTAL
+            elif campo == "peso_total":
+                if consolidado["peso_total"] in [None, "", "null"]:
+                    if isinstance(valor_nuevo, str):
+                        numeros = ''.join(filter(str.isdigit, valor_nuevo))
+                        consolidado["peso_total"] = int(numeros) if numeros else valor_nuevo
+                    else:
+                        consolidado["peso_total"] = valor_nuevo
 
-            # DESCRIPCIÓN (la más completa)
+            # PESO UNIDAD
+            elif campo == "peso_unidad":
+                if consolidado["peso_unidad"] in [None, "", "null"]:
+                    texto_peso = str(valor_nuevo).upper()
+                    if "LBS" in texto_peso or "LB" in texto_peso:
+                        consolidado["peso_unidad"] = "LBS"
+                    elif "KGS" in texto_peso or "KG" in texto_peso:
+                        consolidado["peso_unidad"] = "KGS"
+                    else:
+                        consolidado["peso_unidad"] = valor_nuevo
+
+            # DESCRIPCIÓN
             elif campo == "descripcion":
-                if not valor_actual or len(valor_nuevo) > len(str(valor_actual)):
+                if not valor_actual or len(str(valor_nuevo)) > len(str(valor_actual)):
                     consolidado[campo] = valor_nuevo
 
             # DEFAULT
