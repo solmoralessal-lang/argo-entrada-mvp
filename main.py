@@ -1169,4 +1169,86 @@ Reglas:
         "resultados": resultados
     }
 
+@app.post("/argo/procesar_desde_ocr")
+async def argo_procesar_desde_ocr(payload: dict = Body(...)):
+    ocr = payload.get("ocr") or payload
+
+    cliente = ocr.get("cliente") or "No legible"
+    proveedor = ocr.get("proveedor") or "No legible"
+    paqueteria = ocr.get("paqueteria") or "No legible"
+    tracking = ocr.get("tracking") or "No legible"
+    descripcion = ocr.get("descripcion") or "No legible"
+    cantidad_bultos = ocr.get("cantidad_bultos")
+    peso_total = ocr.get("peso_total")
+    peso_unidad = ocr.get("peso_unidad") or "No legible"
+    direccion_origen = ocr.get("direccion_origen") or "No legible"
+    direccion_destino = ocr.get("direccion_destino") or "No legible"
+
+    shipment_id = tracking if tracking != "No legible" else f"OCR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
+
+    cantidad = str(cantidad_bultos) if cantidad_bultos not in [None, "", "null"] else "No legible"
+    peso_total_str = str(peso_total) if peso_total not in [None, "", "null"] else "No legible"
+
+    entrada = {
+        "shipment_id": shipment_id,
+        "fecha_recepcion": fecha_recepcion,
+        "cliente": cliente,
+        "proveedor": proveedor,
+        "paqueteria": paqueteria,
+        "tracking": tracking,
+        "descripcion": descripcion,
+        "marca": "No legible",
+        "modelo": "No legible",
+        "no_parte": "No legible",
+        "no_lote": "No legible",
+        "no_serie": "No legible",
+        "cantidad": cantidad,
+        "unidad": peso_unidad,
+        "peso_total": peso_total_str,
+        "pais_origen": "No legible",
+        "direccion_origen": direccion_origen,
+        "direccion_destino": direccion_destino
+    }
+
+    faltantes = []
+    alertas = []
+
+    for campo, valor in entrada.items():
+        if valor == "No legible":
+            faltantes.append({
+                "campo": campo,
+                "valor": valor
+            })
+
+    estado = "OK"
+    severidad_maxima = "NINGUNA"
+
+    if len(faltantes) > 0:
+        estado = "ADVERTENCIA"
+        severidad_maxima = "MEDIA"
+
+    control_stub = argo_control_validar({
+        "version": "1.0",
+        "modulo": "ARGO_ENTRADA",
+        "entrada": entrada
+    })
+
+    return {
+        "ok": True,
+        "version": "1.0",
+        "modulo": "ARGO_ENTRADA",
+        "estado": estado,
+        "severidad_maxima": severidad_maxima,
+        "conteo": {
+            "faltantes": len(faltantes),
+            "alertas": len(alertas)
+        },
+        "faltantes": faltantes,
+        "alertas": alertas,
+        "ocr_consolidado": ocr,
+        "entrada": entrada,
+        "control": control_stub
+    }
+
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
