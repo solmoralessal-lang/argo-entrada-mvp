@@ -3,12 +3,13 @@ from fastapi import FastAPI, Form, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import hmac
+import os
 import base64
 import hashlib
-import os
-from typing import Optional
+from typing import List
 from fastapi.responses import JSONResponse
 import requests
+from typing import List
 
 from argo_document import argo_document_bloque1, salida_to_dict
 from argo_master import build_master_output
@@ -949,8 +950,16 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def convertir_a_base64(file_bytes):
     return base64.b64encode(file_bytes).decode("utf-8")
 
+from typing import Optional, List
+
+from openai import OpenAI
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def convertir_a_base64(file_bytes):
+    return base64.b64encode(file_bytes).decode("utf-8")
+
 @app.post("/argo/ocr")
-async def argo_ocr(files: list[UploadFile] = File(...)):
+async def argo_ocr(files: List[UploadFile] = File(...)):
     resultados = []
     errores = []
 
@@ -1021,6 +1030,5 @@ Reglas:
         "errores": errores,
         "resultados": resultados
     }
-  
 
    
