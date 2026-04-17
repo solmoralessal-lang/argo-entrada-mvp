@@ -6,7 +6,7 @@ import hmac
 import os
 import base64
 import hashlib
-from typing import List
+from typing import Optional, List
 from fastapi.responses import JSONResponse
 import requests
 
