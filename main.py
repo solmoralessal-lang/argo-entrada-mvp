@@ -967,15 +967,18 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def convertir_a_base64(file_bytes):
     return base64.b64encode(file_bytes).decode("utf-8")
 
+from typing import Optional, List
+from typing_extensions import Annotated
+
 @app.post("/argo/ocr")
-async def argo_ocr(files: List[UploadFile] = File(...)):
+async def argo_ocr(files: Annotated[List[UploadFile], File(...)]):
     resultados = []
     errores = []
 
     for file in files:
         try:
             contenido = await file.read()
-            imagen_base64 = convertir_a_base64(contenido)
+            imagen_base64 = base64.b64encode(contenido).decode("utf-8")
 
             response = client.responses.create(
                 model="gpt-5.4",
@@ -1014,4 +1017,3 @@ async def argo_ocr(files: List[UploadFile] = File(...)):
         "errores": errores,
         "resultados": resultados
     }
-   
