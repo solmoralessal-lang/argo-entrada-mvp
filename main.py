@@ -33,79 +33,10 @@ from argo_supabase_historial import aprobar_operacion_supabase
 
 app = FastAPI()
 
-from openai import OpenAI
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# 🔷 Primero crear carpeta
+if not os.path.exists("outputs"):
+    os.makedirs("outputs")
 
-def convertir_a_base64(file_bytes):
-    return base64.b64encode(file_bytes).decode("utf-8")
-
-@app.post("/argo/ocr")
-async def argo_ocr(files: list[UploadFile] = File(...)):
-    try:
-        resultados = []
-
-        for file in files:
-            contenido = await file.read()
-            imagen_base64 = convertir_a_base64(contenido)
-
-            response = client.responses.create(
-                model="gpt-5.4",
-                input=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": """
-Eres un sistema OCR experto en logística.
-
-Extrae SOLO en formato JSON:
-
-{
-  "cliente": "",
-  "proveedor": "",
-  "paqueteria": "",
-  "tracking": "",
-  "descripcion": "",
-  "cantidad_bultos": null,
-  "peso_total": null,
-  "peso_unidad": "",
-  "direccion_origen": "",
-  "direccion_destino": ""
-}
-
-Reglas:
-- No inventar datos
-- Si no se ve → null
-- tracking = número principal
-- paqueteria = FedEx, UPS, DHL, etc
-"""},
-
-                            {
-                                "type": "input_image",
-                                "image_url": f"data:image/jpeg;base64,{imagen_base64}",
-                            },
-                        ],
-                    }
-                ],
-            )
-
-            texto = response.output_text
-
-            resultados.append({
-                "archivo": file.filename,
-                "ocr_raw": texto
-            })
-
-        return {
-            "ok": True,
-            "total_archivos": len(files),
-            "resultados": resultados
-        }
-
-    except Exception as e:
-        return {
-            "ok": False,
-            "error": str(e)
-        }
 # 🔷 Luego exponerla
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
@@ -1011,6 +942,56 @@ async def endpoint_clientes():
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(cliente_id: str = Query(default=None)):
     return obtener_dashboard_desde_historial(cliente_id)
+
+from typing import List
+from fastapi import UploadFile, File
+import base64
+import os
+from openai import OpenAI
+
+@app.post("/argo/ocr")
+async def argo_ocr(files: List[UploadFile] = File(...)):
+    try:
+        resultados = []
+
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        for file in files:
+            contenido = await file.read()
+            b64 = base64.b64encode(contenido).decode("utf-8")
+
+            response = client.responses.create(
+                model="gpt-5.4",
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Extrae la información logística en JSON puro."},
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/jpeg;base64,{b64}"
+                            }
+                        ]
+                    }
+                ]
+            )
+
+            resultados.append({
+                "archivo": file.filename,
+                "ocr_raw": response.output_text
+            })
+
+        return {
+            "ok": True,
+            "archivos_procesados": len(resultados),
+            "resultados": resultados
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
     
   
 
