@@ -971,11 +971,26 @@ from typing import Optional, List
 from typing_extensions import Annotated
 
 @app.post("/argo/ocr")
-async def argo_ocr(files: Annotated[List[UploadFile], File(...)]):
+async def argo_ocr(
+    archivo1: UploadFile = File(None),
+    archivo2: UploadFile = File(None),
+    archivo3: UploadFile = File(None),
+    archivo4: UploadFile = File(None),
+    archivo5: UploadFile = File(None),
+):
     resultados = []
     errores = []
 
-    for file in files:
+    archivos = [archivo1, archivo2, archivo3, archivo4, archivo5]
+    archivos_validos = [a for a in archivos if a is not None]
+
+    if not archivos_validos:
+        return {
+            "ok": False,
+            "error": "No se recibieron archivos"
+        }
+
+    for file in archivos_validos:
         try:
             contenido = await file.read()
             imagen_base64 = base64.b64encode(contenido).decode("utf-8")
@@ -988,7 +1003,30 @@ async def argo_ocr(files: Annotated[List[UploadFile], File(...)]):
                         "content": [
                             {
                                 "type": "input_text",
-                                "text": "Extrae la información logística en JSON puro."
+                                "text": """
+Eres un sistema OCR experto en logística.
+
+Extrae SOLO en formato JSON:
+
+{
+  "cliente": "",
+  "proveedor": "",
+  "paqueteria": "",
+  "tracking": "",
+  "descripcion": "",
+  "cantidad_bultos": null,
+  "peso_total": null,
+  "peso_unidad": "",
+  "direccion_origen": "",
+  "direccion_destino": ""
+}
+
+Reglas:
+- No inventar datos
+- Si no se ve -> null
+- tracking = número principal
+- paqueteria = FedEx, UPS, DHL, etc
+"""
                             },
                             {
                                 "type": "input_image",
@@ -1006,13 +1044,13 @@ async def argo_ocr(files: Annotated[List[UploadFile], File(...)]):
 
         except Exception as e:
             errores.append({
-                "archivo": file.filename,
+                "archivo": file.filename if file else None,
                 "error": str(e)
             })
 
     return {
         "ok": len(resultados) > 0,
-        "total_archivos": len(files),
+        "total_archivos": len(archivos_validos),
         "procesados": len(resultados),
         "errores": errores,
         "resultados": resultados
