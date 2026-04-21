@@ -1271,6 +1271,17 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
     direccion_origen = ocr.get("direccion_origen") or "No legible"
     direccion_destino = ocr.get("direccion_destino") or "No legible"
 
+    # =========================
+    # NORMALIZACIÓN
+    # =========================
+    peso_unidad_txt = str(peso_unidad).strip().upper() if peso_unidad not in [None, "", "null"] else "NO LEGIBLE"
+    if "LBS" in peso_unidad_txt or peso_unidad_txt == "LB":
+        peso_unidad_norm = "LBS"
+    elif "KGS" in peso_unidad_txt or peso_unidad_txt == "KG":
+        peso_unidad_norm = "KGS"
+    else:
+        peso_unidad_norm = peso_unidad if peso_unidad not in [None, "", "null"] else "No legible"
+
     shipment_id = tracking if tracking != "No legible" else f"OCR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
 
@@ -1291,7 +1302,7 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
         "no_lote": "No legible",
         "no_serie": "No legible",
         "cantidad": cantidad,
-        "unidad": peso_unidad,
+        "unidad": peso_unidad_norm,
         "peso_total": peso_total_str,
         "pais_origen": "No legible",
         "direccion_origen": direccion_origen,
@@ -1350,7 +1361,7 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
     ws["B12"] = entrada["no_lote"]
     ws["B13"] = entrada["no_serie"]
     ws["B14"] = cantidad
-    ws["B15"] = peso_unidad
+    ws["B15"] = peso_unidad_norm
     ws["B16"] = peso_total_str
     ws["B17"] = entrada["pais_origen"]
 
