@@ -1147,12 +1147,19 @@ Reglas:
 
             # PESO UNIDAD
             elif campo == "peso_unidad":
-                if consolidado["peso_unidad"] in [None, "", "null"]:
-                    texto_peso = str(valor_nuevo).upper()
-                    if "LBS" in texto_peso or "LB" in texto_peso:
-                        consolidado["peso_unidad"] = "LBS"
-                    elif "KGS" in texto_peso or "KG" in texto_peso:
-                        consolidado["peso_unidad"] = "KGS"
+                texto = str(valor_nuevo).upper()
+
+                if "LBS" in texto or "LB" in texto:
+                    numeros = ''.join(filter(str.isdigit, texto))
+                    if numeros:
+                    consolidado["peso_total"] = int(numeros)
+                    consolidado["peso_unidad"] = "LBS"
+
+                elif "KGS" in texto or "KG" in texto:
+                    numeros = ''.join(filter(str.isdigit, texto))
+                    if numeros:
+                        consolidado["peso_total"] = int(numeros)
+                    consolidado["peso_unidad"] = "KGS"
                     else:
                         consolidado["peso_unidad"] = valor_nuevo
 
@@ -1164,7 +1171,26 @@ Reglas:
             # DEFAULT
             elif consolidado[campo] in [None, "", "null"]:
                 consolidado[campo] = valor_nuevo
+                            
 
+    # REFUERZO FINAL DE PESO
+    if not consolidado.get("peso_unidad"):
+        for item in resultados:
+            data = item.get("ocr_json", {})
+            for val in data.values():
+                texto = str(val).upper()
+
+                if "LBS" in texto or "LB" in texto:
+                    numeros = ''.join(filter(str.isdigit, texto))
+                    if numeros:
+                        consolidado["peso_total"] = int(numeros)
+                    consolidado["peso_unidad"] = "LBS"
+
+                elif "KGS" in texto or "KG" in texto:
+                    numeros = ''.join(filter(str.isdigit, texto))
+                    if numeros:
+                        consolidado["peso_total"] = int(numeros)
+                    consolidado["peso_unidad"] = "KGS"
     return {
         "ok": len(resultados) > 0,
         "total_archivos": len(archivos_validos),
