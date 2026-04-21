@@ -978,6 +978,8 @@ async def argo_ocr(
     archivo4: UploadFile = File(None),
     archivo5: UploadFile = File(None),
 ):
+    import json
+
     archivos = [archivo1, archivo2, archivo3, archivo4, archivo5]
     archivos_validos = [a for a in archivos if a is not None]
 
@@ -990,6 +992,9 @@ async def argo_ocr(
     resultados = []
     errores = []
 
+    # =========================
+    # OCR POR ARCHIVO
+    # =========================
     for file in archivos_validos:
         try:
             contenido = await file.read()
@@ -997,12 +1002,13 @@ async def argo_ocr(
 
             response = client.responses.create(
                 model="gpt-5.4",
-                input=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": """
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": """
 Eres un sistema OCR experto en logística.
 
 Extrae SOLO en formato JSON:
@@ -1019,18 +1025,41 @@ Extrae SOLO en formato JSON:
   "direccion_origen": null,
   "direccion_destino": null
 }
+
+Reglas:
+- No inventar datos
+- Si no se ve -> null
+- tracking = número principal
+- paqueteria = FedEx, UPS, DHL, etc
+- responde solo JSON válido
 """
-                        },
-                        {
-                            "type": "input_image",
-                            "image_base64": imagen_base64
-                        }
-                    ]
-                }]
+                            },
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/jpeg;base64,{imagen_base64}"
+                            }
+                        ]
+                    }
+                ]
             )
 
-            texto = response.output_text
-            ocr_json = json.loads(texto)
+            texto = response.output_text.strip()
+
+            try:
+                ocr_json = json.loads(texto)
+            except Exception:
+                ocr_json = {
+                    "cliente": None,
+                    "proveedor": None,
+                    "paqueteria": None,
+                    "tracking": None,
+                    "descripcion": None,
+                    "cantidad_bultos": None,
+                    "peso_total": None,
+                    "peso_unidad": None,
+                    "direccion_origen": None,
+                    "direccion_destino": None
+                }
 
             resultados.append({
                 "archivo": file.filename,
@@ -1040,12 +1069,12 @@ Extrae SOLO en formato JSON:
 
         except Exception as e:
             errores.append({
-                "archivo": file.filename,
+                "archivo": file.filename if file else None,
                 "error": str(e)
             })
 
     # =========================
-    # CONSOLIDADO
+    # CONSOLIDADO INTELIGENTE
     # =========================
     consolidado = {
         "cliente": None,
@@ -1064,84 +1093,98 @@ Extrae SOLO en formato JSON:
         data = item.get("ocr_json", {})
         nombre_archivo = item.get("archivo", "").lower()
 
-        prioridad = 1
+        prioridad_cliente_proveedor = 1
+        prioridad_tracking_paqueteria = 1
 
         if "invoice" in nombre_archivo or "packing" in nombre_archivo:
-            prioridad = 3
-        elif "paqueteria" in nombre_archivo or "label" in nombre_archivo:
-            prioridad = 2
-        elif "producto" in nombre_archivo:
-            prioridad = 1
+            prioridad_cliente_proveedor = 3
+
+        if "paqueteria" in nombre_archivo or "label" in nombre_archivo:
+            prioridad_tracking_paqueteria = 3
 
         for campo in consolidado.keys():
             valor_actual = consolidado[campo]
             valor_nuevo = data.get(campo)
 
-            if not valor_nuevo:
+            if valor_nuevo in [None, "", "null"]:
                 continue
 
-            if campo == "cliente":
-                if prioridad >= 3:
+            # CLIENTE / PROVEEDOR
+            if campo in ["cliente", "proveedor"]:
+                if prioridad_cliente_proveedor >= 3:
+                    consolidado[campo] = valor_nuevo
+                elif consolidado[campo] in [None, "", "null"]:
                     consolidado[campo] = valor_nuevo
 
-            elif campo == "tracking":
-                if prioridad >= 2:
+            # TRACKING / PAQUETERIA
+            elif campo in ["tracking", "paqueteria"]:
+                if prioridad_tracking_paqueteria >= 3:
+                    consolidado[campo] = valor_nuevo
+                elif consolidado[campo] in [None, "", "null"]:
                     consolidado[campo] = valor_nuevo
 
+            # CANTIDAD
             elif campo == "cantidad_bultos":
                 if isinstance(valor_nuevo, str) and "OF" in valor_nuevo.upper():
                     try:
                         total = int(valor_nuevo.upper().split("OF")[1].strip())
                         consolidado[campo] = total
-                    except:
+                    except Exception:
                         pass
                 elif consolidado[campo] is None:
                     consolidado[campo] = valor_nuevo
 
+            # PESO TOTAL
+            elif campo == "peso_total":
+                if consolidado["peso_total"] in [None, "", "null"]:
+                    if isinstance(valor_nuevo, str):
+                        numeros = "".join(filter(str.isdigit, valor_nuevo))
+                        consolidado["peso_total"] = int(numeros) if numeros else valor_nuevo
+                    else:
+                        consolidado["peso_total"] = valor_nuevo
+
+            # PESO UNIDAD
             elif campo == "peso_unidad":
-                texto = str(valor_nuevo).upper()
-
-                if "LBS" in texto or "LB" in texto:
-                    numeros = ''.join(filter(str.isdigit, texto))
-                    if numeros:
-                        consolidado["peso_total"] = int(numeros)
+                texto_peso = str(valor_nuevo).upper()
+                if "LBS" in texto_peso or "LB" in texto_peso:
                     consolidado["peso_unidad"] = "LBS"
-
-                elif "KGS" in texto or "KG" in texto:
-                    numeros = ''.join(filter(str.isdigit, texto))
-                    if numeros:
-                        consolidado["peso_total"] = int(numeros)
+                elif "KGS" in texto_peso or "KG" in texto_peso:
                     consolidado["peso_unidad"] = "KGS"
 
+            # DESCRIPCIÓN
             elif campo == "descripcion":
                 if not valor_actual or len(str(valor_nuevo)) > len(str(valor_actual)):
                     consolidado[campo] = valor_nuevo
 
+            # DEFAULT
             elif consolidado[campo] in [None, "", "null"]:
                 consolidado[campo] = valor_nuevo
 
     # =========================
     # REFUERZO FINAL PESO
     # =========================
-    if not consolidado.get("peso_unidad"):
+    if not consolidado.get("peso_unidad") or not consolidado.get("peso_total"):
         for item in resultados:
             data = item.get("ocr_json", {})
             for val in data.values():
                 texto = str(val).upper()
 
                 if "LBS" in texto or "LB" in texto:
-                    numeros = ''.join(filter(str.isdigit, texto))
-                    if numeros:
+                    numeros = "".join(filter(str.isdigit, texto))
+                    if numeros and not consolidado.get("peso_total"):
                         consolidado["peso_total"] = int(numeros)
-                    consolidado["peso_unidad"] = "LBS"
+                    if not consolidado.get("peso_unidad"):
+                        consolidado["peso_unidad"] = "LBS"
 
                 elif "KGS" in texto or "KG" in texto:
-                    numeros = ''.join(filter(str.isdigit, texto))
-                    if numeros:
+                    numeros = "".join(filter(str.isdigit, texto))
+                    if numeros and not consolidado.get("peso_total"):
                         consolidado["peso_total"] = int(numeros)
-                    consolidado["peso_unidad"] = "KGS"
+                    if not consolidado.get("peso_unidad"):
+                        consolidado["peso_unidad"] = "KGS"
 
     return {
+        
         "ok": len(resultados) > 0,
         "total_archivos": len(archivos_validos),
         "procesados": len(resultados),
