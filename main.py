@@ -1171,8 +1171,7 @@ Reglas:
             # DEFAULT
             elif consolidado[campo] in [None, "", "null"]:
                 consolidado[campo] = valor_nuevo
-                            
-
+                
     # REFUERZO FINAL DE PESO
     if not consolidado.get("peso_unidad"):
         for item in resultados:
@@ -1190,7 +1189,9 @@ Reglas:
                     numeros = ''.join(filter(str.isdigit, texto))
                     if numeros:
                         consolidado["peso_total"] = int(numeros)
-                    consolidado["peso_unidad"] = "KGS"
+                    consolidado["peso_unidad"] = "KGS"  
+
+            
     return {
         "ok": len(resultados) > 0,
         "total_archivos": len(archivos_validos),
