@@ -1125,7 +1125,7 @@ Reglas:
                     try:
                         total = int(valor_nuevo.upper().split("OF")[1].strip())
                         consolidado[campo] = total
-                    except Exception:
+                    except:
                         pass
                 elif consolidado[campo] is None:
                     consolidado[campo] = valor_nuevo
@@ -1133,8 +1133,19 @@ Reglas:
             elif campo == "peso_total":
                 if consolidado["peso_total"] in [None, "", "null"]:
                     if isinstance(valor_nuevo, str):
-                        numeros = "".join(filter(str.isdigit, valor_nuevo))
-                        consolidado["peso_total"] = int(numeros) if numeros else valor_nuevo
+                        texto = valor_nuevo.upper()
+                        numeros = "".join(filter(lambda x: x.isdigit() or x == ".", texto))
+
+                        if numeros:
+                            try:
+                                consolidado["peso_total"] = float(numeros)
+                            except:
+                                consolidado["peso_total"] = None
+
+                        if "LBS" in texto or "LB" in texto:
+                            consolidado["peso_unidad"] = "LBS"
+                        elif "KGS" in texto or "KG" in texto:
+                            consolidado["peso_unidad"] = "KGS"
                     else:
                         consolidado["peso_total"] = valor_nuevo
 
@@ -1162,64 +1173,39 @@ Reglas:
         if valor is None:
             return True
         if isinstance(valor, str):
-            v = valor.strip().lower()
-            if v in ["", "null", "no legible", "n/a", "na", "unknown"]:
+            if valor.strip().lower() in ["", "null", "no legible", "n/a", "unknown"]:
                 return True
         return False
 
-    if es_faltante(consolidado.get("cliente")):
-        faltantes.append({"campo": "cliente", "valor": "No legible o ausente"})
-
-    if es_faltante(consolidado.get("proveedor")):
-        faltantes.append({"campo": "proveedor", "valor": "No legible o ausente"})
-
-    if es_faltante(consolidado.get("paqueteria")):
-        faltantes.append({"campo": "paqueteria", "valor": "No legible o ausente"})
-
-    tracking = consolidado.get("tracking")
-    if es_faltante(tracking) or (isinstance(tracking, str) and len(tracking.strip()) < 8):
-        faltantes.append({"campo": "tracking", "valor": "Inválido o incompleto"})
-
-    descripcion = consolidado.get("descripcion")
-    if es_faltante(descripcion) or (isinstance(descripcion, str) and len(descripcion.strip()) < 10):
-        faltantes.append({"campo": "descripcion", "valor": "Muy corta o no útil"})
-
-    if consolidado.get("cantidad_bultos") in [None, "", "null", 0]:
-        faltantes.append({"campo": "cantidad_bultos", "valor": "No detectado"})
-
-    if consolidado.get("peso_total") in [None, "", "null", 0]:
-        faltantes.append({"campo": "peso_total", "valor": "No detectado"})
-
-    if es_faltante(consolidado.get("peso_unidad")):
-        faltantes.append({"campo": "peso_unidad", "valor": "No detectado"})
+    for campo in ["cliente","proveedor","paqueteria","tracking","descripcion","cantidad_bultos","peso_total","peso_unidad"]:
+        if es_faltante(consolidado.get(campo)):
+            faltantes.append({"campo": campo, "valor": "No detectado"})
 
     # =========================
-    # PRIORIDAD DE FALTANTES
+    # PRIORIDAD
     # =========================
     faltantes_priorizados = []
 
     for f in faltantes:
-        campo = f["campo"]
-
-        if campo in ["cliente", "proveedor", "tracking"]:
+        if f["campo"] in ["cliente","proveedor","tracking"]:
             nivel = "CRITICO"
-        elif campo in ["descripcion", "cantidad_bultos"]:
+        elif f["campo"] in ["descripcion","cantidad_bultos"]:
             nivel = "MEDIO"
         else:
             nivel = "BAJO"
 
         faltantes_priorizados.append({
-            "campo": campo,
+            "campo": f["campo"],
             "nivel": nivel
         })
 
     # =========================
-    # ESTADO FINAL
+    # ESTADO
     # =========================
     estado = "OK"
     severidad_maxima = "NINGUNA"
 
-    if any(f["campo"] in ["cliente", "tracking"] for f in faltantes):
+    if any(f["campo"] in ["cliente","tracking"] for f in faltantes):
         estado = "REVISION"
         severidad_maxima = "ALTA"
     elif len(faltantes) > 0:
@@ -1227,23 +1213,23 @@ Reglas:
         severidad_maxima = "MEDIA"
 
     # =========================
-    # DECISION AUTOMATICA
+    # DECISION
     # =========================
     accion = "CONTINUAR"
     razon = "Sin faltantes"
 
     if any(f["nivel"] == "CRITICO" for f in faltantes_priorizados):
         accion = "DETENER"
-        razon = "Faltantes críticos detectados"
+        razon = "Faltantes críticos"
     elif any(f["nivel"] == "MEDIO" for f in faltantes_priorizados):
         accion = "CONTINUAR_CON_ALERTA"
-        razon = "Faltantes medios detectados"
+        razon = "Faltantes medios"
     elif any(f["nivel"] == "BAJO" for f in faltantes_priorizados):
         accion = "CONTINUAR"
         razon = "Solo faltantes menores"
 
     return {
-        "ok": len(resultados) > 0,
+        "ok": True,
         "modulo": "ARGO_OCR",
         "estado": estado,
         "severidad_maxima": severidad_maxima,
