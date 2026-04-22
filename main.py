@@ -969,7 +969,6 @@ async def endpoint_clientes():
 async def endpoint_dashboard(cliente_id: str = Query(default=None)):
     return obtener_dashboard_desde_historial(cliente_id)
 
-
 @app.post("/argo/ocr")
 async def argo_ocr(
     archivo1: UploadFile = File(None),
@@ -1109,21 +1108,18 @@ Reglas:
             if valor_nuevo in [None, "", "null"]:
                 continue
 
-            # CLIENTE / PROVEEDOR
             if campo in ["cliente", "proveedor"]:
                 if prioridad_cliente_proveedor >= 3:
                     consolidado[campo] = valor_nuevo
                 elif consolidado[campo] in [None, "", "null"]:
                     consolidado[campo] = valor_nuevo
 
-            # TRACKING / PAQUETERIA
             elif campo in ["tracking", "paqueteria"]:
                 if prioridad_tracking_paqueteria >= 3:
                     consolidado[campo] = valor_nuevo
                 elif consolidado[campo] in [None, "", "null"]:
                     consolidado[campo] = valor_nuevo
 
-            # CANTIDAD
             elif campo == "cantidad_bultos":
                 if isinstance(valor_nuevo, str) and "OF" in valor_nuevo.upper():
                     try:
@@ -1134,7 +1130,6 @@ Reglas:
                 elif consolidado[campo] is None:
                     consolidado[campo] = valor_nuevo
 
-            # PESO TOTAL
             elif campo == "peso_total":
                 if consolidado["peso_total"] in [None, "", "null"]:
                     if isinstance(valor_nuevo, str):
@@ -1143,7 +1138,6 @@ Reglas:
                     else:
                         consolidado["peso_total"] = valor_nuevo
 
-            # PESO UNIDAD
             elif campo == "peso_unidad":
                 texto_peso = str(valor_nuevo).upper()
                 if "LBS" in texto_peso or "LB" in texto_peso:
@@ -1151,12 +1145,10 @@ Reglas:
                 elif "KGS" in texto_peso or "KG" in texto_peso:
                     consolidado["peso_unidad"] = "KGS"
 
-            # DESCRIPCIÓN
             elif campo == "descripcion":
                 if not valor_actual or len(str(valor_nuevo)) > len(str(valor_actual)):
                     consolidado[campo] = valor_nuevo
 
-            # DEFAULT
             elif consolidado[campo] in [None, "", "null"]:
                 consolidado[campo] = valor_nuevo
 
@@ -1183,66 +1175,29 @@ Reglas:
                     if not consolidado.get("peso_unidad"):
                         consolidado["peso_unidad"] = "KGS"
 
-    return {
-        
-        "ok": len(resultados) > 0,
-        "total_archivos": len(archivos_validos),
-        "procesados": len(resultados),
-        "errores": errores,
-        "consolidado": consolidado,
-        "resultados": resultados
-    }
-    
-@app.post("/argo/procesar_desde_ocr")
-async def argo_procesar_desde_ocr(payload: dict = Body(...)):
-    ocr = payload.get("ocr") or payload
-
-    cliente = ocr.get("cliente") or "No legible"
-    proveedor = ocr.get("proveedor") or "No legible"
-    paqueteria = ocr.get("paqueteria") or "No legible"
-    tracking = ocr.get("tracking") or "No legible"
-    descripcion = ocr.get("descripcion") or "No legible"
-    cantidad_bultos = ocr.get("cantidad_bultos")
-    peso_total = ocr.get("peso_total")
-    peso_unidad = ocr.get("peso_unidad") or "No legible"
-    direccion_origen = ocr.get("direccion_origen") or "No legible"
-    direccion_destino = ocr.get("direccion_destino") or "No legible"
-
-    shipment_id = tracking if tracking != "No legible" else f"OCR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
-
-    cantidad = str(cantidad_bultos) if cantidad_bultos not in [None, "", "null"] else "No legible"
-    peso_total_str = str(peso_total) if peso_total not in [None, "", "null"] else "No legible"
-
-    entrada = {
-        "shipment_id": shipment_id,
-        "fecha_recepcion": fecha_recepcion,
-        "cliente": cliente,
-        "proveedor": proveedor,
-        "paqueteria": paqueteria,
-        "tracking": tracking,
-        "descripcion": descripcion,
-        "marca": "No legible",
-        "modelo": "No legible",
-        "no_parte": "No legible",
-        "no_lote": "No legible",
-        "no_serie": "No legible",
-        "cantidad": cantidad,
-        "unidad": peso_unidad,
-        "peso_total": peso_total_str,
-        "pais_origen": "No legible",
-        "direccion_origen": direccion_origen,
-        "direccion_destino": direccion_destino
-    }
-
+    # =========================
+    # ESTADO / FALTANTES / ALERTAS
+    # =========================
     faltantes = []
     alertas = []
 
-    for campo, valor in entrada.items():
-        if valor == "No legible":
+    campos_requeridos = [
+        "cliente",
+        "proveedor",
+        "paqueteria",
+        "tracking",
+        "descripcion",
+        "cantidad_bultos",
+        "peso_total",
+        "peso_unidad",
+    ]
+
+    for campo in campos_requeridos:
+        valor = consolidado.get(campo)
+        if valor in [None, "", "null"]:
             faltantes.append({
                 "campo": campo,
-                "valor": valor
+                "valor": "No legible"
             })
 
     estado = "OK"
@@ -1252,16 +1207,9 @@ async def argo_procesar_desde_ocr(payload: dict = Body(...)):
         estado = "ADVERTENCIA"
         severidad_maxima = "MEDIA"
 
-    control_stub = argo_control_validar({
-        "version": "1.0",
-        "modulo": "ARGO_ENTRADA",
-        "entrada": entrada
-    })
-
     return {
-        "ok": True,
-        "version": "1.0",
-        "modulo": "ARGO_ENTRADA",
+        "ok": len(resultados) > 0,
+        "modulo": "ARGO_OCR",
         "estado": estado,
         "severidad_maxima": severidad_maxima,
         "conteo": {
@@ -1270,9 +1218,11 @@ async def argo_procesar_desde_ocr(payload: dict = Body(...)):
         },
         "faltantes": faltantes,
         "alertas": alertas,
-        "ocr_consolidado": ocr,
-        "entrada": entrada,
-        "control": control_stub
+        "total_archivos": len(archivos_validos),
+        "procesados": len(resultados),
+        "errores": errores,
+        "consolidado": consolidado,
+        "resultados": resultados
     }
 
 @app.post("/argo/generar_desde_ocr")
