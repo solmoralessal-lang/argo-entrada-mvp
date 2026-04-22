@@ -983,17 +983,12 @@ async def argo_ocr(
     archivos_validos = [a for a in archivos if a is not None]
 
     if not archivos_validos:
-        return {
-            "ok": False,
-            "error": "No se recibieron archivos"
-        }
+        return {"ok": False, "error": "No se recibieron archivos"}
 
     resultados = []
     errores = []
 
-    # =========================
-    # OCR POR ARCHIVO
-    # =========================
+    # OCR
     for file in archivos_validos:
         try:
             contenido = await file.read()
@@ -1001,16 +996,11 @@ async def argo_ocr(
 
             response = client.responses.create(
                 model="gpt-5.4",
-                input=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": """
-Eres un sistema OCR experto en logística.
-
-Extrae SOLO en formato JSON:
+                input=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text","text": """
+Extrae JSON:
 
 {
   "cliente": null,
@@ -1024,229 +1014,108 @@ Extrae SOLO en formato JSON:
   "direccion_origen": null,
   "direccion_destino": null
 }
-
-Reglas:
-- No inventar datos
-- Si no se ve -> null
-- tracking = número principal
-- paqueteria = FedEx, UPS, DHL, etc
-- responde solo JSON válido
-"""
-                            },
-                            {
-                                "type": "input_image",
-                                "image_url": f"data:image/jpeg;base64,{imagen_base64}"
-                            }
-                        ]
-                    }
-                ]
+""" },
+                        {"type": "input_image","image_url": f"data:image/jpeg;base64,{imagen_base64}"}
+                    ]
+                }]
             )
 
             texto = response.output_text.strip()
 
             try:
                 ocr_json = json.loads(texto)
-            except Exception:
-                ocr_json = {
-                    "cliente": None,
-                    "proveedor": None,
-                    "paqueteria": None,
-                    "tracking": None,
-                    "descripcion": None,
-                    "cantidad_bultos": None,
-                    "peso_total": None,
-                    "peso_unidad": None,
-                    "direccion_origen": None,
-                    "direccion_destino": None
-                }
+            except:
+                ocr_json = {}
 
-            resultados.append({
-                "archivo": file.filename,
-                "ocr_raw": texto,
-                "ocr_json": ocr_json
-            })
+            resultados.append({"archivo": file.filename,"ocr_json": ocr_json})
 
         except Exception as e:
-            errores.append({
-                "archivo": file.filename if file else None,
-                "error": str(e)
-            })
+            errores.append({"archivo": file.filename,"error": str(e)})
 
-    # =========================
-    # CONSOLIDADO INTELIGENTE
-    # =========================
+    # CONSOLIDADO
     consolidado = {
-        "cliente": None,
-        "proveedor": None,
-        "paqueteria": None,
-        "tracking": None,
-        "descripcion": None,
-        "cantidad_bultos": None,
-        "peso_total": None,
-        "peso_unidad": None,
-        "direccion_origen": None,
-        "direccion_destino": None
+        "cliente": None,"proveedor": None,"paqueteria": None,"tracking": None,
+        "descripcion": None,"cantidad_bultos": None,
+        "peso_total": None,"peso_unidad": None,
+        "direccion_origen": None,"direccion_destino": None
     }
+
+    def extraer_peso(texto):
+        if not texto:
+            return None, None
+        t = str(texto).upper()
+        nums = "".join([c for c in t if c.isdigit() or c=="."])
+        peso = float(nums) if nums else None
+        unidad = "LBS" if "LB" in t else ("KGS" if "KG" in t else None)
+        return peso, unidad
 
     for item in resultados:
         data = item.get("ocr_json", {})
-        nombre_archivo = item.get("archivo", "").lower()
 
-        prioridad_cliente_proveedor = 1
-        prioridad_tracking_paqueteria = 1
+        for campo in consolidado:
 
-        if "invoice" in nombre_archivo or "packing" in nombre_archivo:
-            prioridad_cliente_proveedor = 3
+            val = data.get(campo)
 
-        if "paqueteria" in nombre_archivo or "label" in nombre_archivo:
-            prioridad_tracking_paqueteria = 3
-
-        for campo in consolidado.keys():
-            valor_actual = consolidado[campo]
-            valor_nuevo = data.get(campo)
-
-            if valor_nuevo in [None, "", "null"]:
-                continue
-
-            if campo in ["cliente", "proveedor"]:
-                if prioridad_cliente_proveedor >= 3:
-                    consolidado[campo] = valor_nuevo
-                elif consolidado[campo] in [None, "", "null"]:
-                    consolidado[campo] = valor_nuevo
-
-            elif campo in ["tracking", "paqueteria"]:
-                if prioridad_tracking_paqueteria >= 3:
-                    consolidado[campo] = valor_nuevo
-                elif consolidado[campo] in [None, "", "null"]:
-                    consolidado[campo] = valor_nuevo
+            if campo in ["peso_total","peso_unidad"]:
+                # 🔥 NUEVO: revisar ambos campos SIEMPRE
+                p,u = extraer_peso(data.get("peso_total") or data.get("peso_unidad"))
+                if p and not consolidado["peso_total"]:
+                    consolidado["peso_total"] = p
+                if u and not consolidado["peso_unidad"]:
+                    consolidado["peso_unidad"] = u
 
             elif campo == "cantidad_bultos":
-                if isinstance(valor_nuevo, str) and "OF" in valor_nuevo.upper():
+                if isinstance(val,str) and "OF" in val.upper():
                     try:
-                        total = int(valor_nuevo.upper().split("OF")[1].strip())
-                        consolidado[campo] = total
-                    except:
-                        pass
-                elif consolidado[campo] is None:
-                    consolidado[campo] = valor_nuevo
-
-            elif campo == "peso_total":
-                if consolidado["peso_total"] in [None, "", "null"]:
-                    if isinstance(valor_nuevo, str):
-                        texto = valor_nuevo.upper()
-                        numeros = "".join(filter(lambda x: x.isdigit() or x == ".", texto))
-
-                        if numeros:
-                            try:
-                                consolidado["peso_total"] = float(numeros)
-                            except:
-                                consolidado["peso_total"] = None
-
-                        if "LBS" in texto or "LB" in texto:
-                            consolidado["peso_unidad"] = "LBS"
-                        elif "KGS" in texto or "KG" in texto:
-                            consolidado["peso_unidad"] = "KGS"
-                    else:
-                        consolidado["peso_total"] = valor_nuevo
-
-            elif campo == "peso_unidad":
-                texto_peso = str(valor_nuevo).upper()
-                if "LBS" in texto_peso or "LB" in texto_peso:
-                    consolidado["peso_unidad"] = "LBS"
-                elif "KGS" in texto_peso or "KG" in texto_peso:
-                    consolidado["peso_unidad"] = "KGS"
+                        consolidado[campo] = int(val.split("OF")[1])
+                    except: pass
+                elif not consolidado[campo] and val:
+                    consolidado[campo] = val
 
             elif campo == "descripcion":
-                if not valor_actual or len(str(valor_nuevo)) > len(str(valor_actual)):
-                    consolidado[campo] = valor_nuevo
+                if val and (not consolidado[campo] or len(val)>len(consolidado[campo])):
+                    consolidado[campo] = val
 
-            elif consolidado[campo] in [None, "", "null"]:
-                consolidado[campo] = valor_nuevo
+            elif not consolidado[campo] and val:
+                consolidado[campo] = val
 
-    # =========================
-    # FALTANTES INTELIGENTES
-    # =========================
+    # FALTANTES
     faltantes = []
-    alertas = []
+    for c in consolidado:
+        if not consolidado[c]:
+            faltantes.append({"campo": c, "valor": "No detectado"})
 
-    def es_faltante(valor):
-        if valor is None:
-            return True
-        if isinstance(valor, str):
-            if valor.strip().lower() in ["", "null", "no legible", "n/a", "unknown"]:
-                return True
-        return False
-
-    for campo in ["cliente","proveedor","paqueteria","tracking","descripcion","cantidad_bultos","peso_total","peso_unidad"]:
-        if es_faltante(consolidado.get(campo)):
-            faltantes.append({"campo": campo, "valor": "No detectado"})
-
-    # =========================
     # PRIORIDAD
-    # =========================
     faltantes_priorizados = []
-
     for f in faltantes:
-        if f["campo"] in ["cliente","proveedor","tracking"]:
-            nivel = "CRITICO"
+        if f["campo"] in ["cliente","tracking"]:
+            nivel="CRITICO"
         elif f["campo"] in ["descripcion","cantidad_bultos"]:
-            nivel = "MEDIO"
+            nivel="MEDIO"
         else:
-            nivel = "BAJO"
+            nivel="BAJO"
+        faltantes_priorizados.append({"campo":f["campo"],"nivel":nivel})
 
-        faltantes_priorizados.append({
-            "campo": f["campo"],
-            "nivel": nivel
-        })
-
-    # =========================
     # ESTADO
-    # =========================
-    estado = "OK"
-    severidad_maxima = "NINGUNA"
+    estado="OK"; severidad="NINGUNA"
+    if any(f["nivel"]=="CRITICO" for f in faltantes_priorizados):
+        estado="REVISION"; severidad="ALTA"
+    elif faltantes:
+        estado="ADVERTENCIA"; severidad="MEDIA"
 
-    if any(f["campo"] in ["cliente","tracking"] for f in faltantes):
-        estado = "REVISION"
-        severidad_maxima = "ALTA"
-    elif len(faltantes) > 0:
-        estado = "ADVERTENCIA"
-        severidad_maxima = "MEDIA"
-
-    # =========================
     # DECISION
-    # =========================
-    accion = "CONTINUAR"
-    razon = "Sin faltantes"
-
-    if any(f["nivel"] == "CRITICO" for f in faltantes_priorizados):
-        accion = "DETENER"
-        razon = "Faltantes críticos"
-    elif any(f["nivel"] == "MEDIO" for f in faltantes_priorizados):
-        accion = "CONTINUAR_CON_ALERTA"
-        razon = "Faltantes medios"
-    elif any(f["nivel"] == "BAJO" for f in faltantes_priorizados):
-        accion = "CONTINUAR"
-        razon = "Solo faltantes menores"
+    accion="CONTINUAR"; razon="OK"
+    if any(f["nivel"]=="CRITICO"):
+        accion="DETENER"
+    elif any(f["nivel"]=="MEDIO"):
+        accion="CONTINUAR_CON_ALERTA"
 
     return {
         "ok": True,
-        "modulo": "ARGO_OCR",
         "estado": estado,
-        "severidad_maxima": severidad_maxima,
-        "decision": {
-            "accion": accion,
-            "razon": razon
-        },
-        "conteo": {
-            "faltantes": len(faltantes),
-            "alertas": len(alertas)
-        },
+        "decision":{"accion":accion,"razon":razon},
         "faltantes": faltantes,
         "faltantes_priorizados": faltantes_priorizados,
-        "alertas": alertas,
-        "total_archivos": len(archivos_validos),
-        "procesados": len(resultados),
-        "errores": errores,
         "consolidado": consolidado,
         "resultados": resultados
     }
