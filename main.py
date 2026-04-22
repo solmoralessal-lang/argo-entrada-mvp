@@ -1222,16 +1222,35 @@ Reglas:
     if any(f["campo"] in ["cliente", "tracking"] for f in faltantes):
         estado = "REVISION"
         severidad_maxima = "ALTA"
-
     elif len(faltantes) > 0:
         estado = "ADVERTENCIA"
         severidad_maxima = "MEDIA"
+
+    # =========================
+    # DECISION AUTOMATICA
+    # =========================
+    accion = "CONTINUAR"
+    razon = "Sin faltantes"
+
+    if any(f["nivel"] == "CRITICO" for f in faltantes_priorizados):
+        accion = "DETENER"
+        razon = "Faltantes críticos detectados"
+    elif any(f["nivel"] == "MEDIO" for f in faltantes_priorizados):
+        accion = "CONTINUAR_CON_ALERTA"
+        razon = "Faltantes medios detectados"
+    elif any(f["nivel"] == "BAJO" for f in faltantes_priorizados):
+        accion = "CONTINUAR"
+        razon = "Solo faltantes menores"
 
     return {
         "ok": len(resultados) > 0,
         "modulo": "ARGO_OCR",
         "estado": estado,
         "severidad_maxima": severidad_maxima,
+        "decision": {
+            "accion": accion,
+            "razon": razon
+        },
         "conteo": {
             "faltantes": len(faltantes),
             "alertas": len(alertas)
