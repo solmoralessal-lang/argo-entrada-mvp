@@ -1153,7 +1153,7 @@ Reglas:
                 consolidado[campo] = valor_nuevo
 
     # =========================
-    # FALTANTES INTELIGENTES 🔥
+    # FALTANTES INTELIGENTES
     # =========================
     faltantes = []
     alertas = []
@@ -1193,10 +1193,37 @@ Reglas:
     if es_faltante(consolidado.get("peso_unidad")):
         faltantes.append({"campo": "peso_unidad", "valor": "No detectado"})
 
+    # =========================
+    # PRIORIDAD DE FALTANTES
+    # =========================
+    faltantes_priorizados = []
+
+    for f in faltantes:
+        campo = f["campo"]
+
+        if campo in ["cliente", "proveedor", "tracking"]:
+            nivel = "CRITICO"
+        elif campo in ["descripcion", "cantidad_bultos"]:
+            nivel = "MEDIO"
+        else:
+            nivel = "BAJO"
+
+        faltantes_priorizados.append({
+            "campo": campo,
+            "nivel": nivel
+        })
+
+    # =========================
+    # ESTADO FINAL
+    # =========================
     estado = "OK"
     severidad_maxima = "NINGUNA"
 
-    if len(faltantes) > 0:
+    if any(f["campo"] in ["cliente", "tracking"] for f in faltantes):
+        estado = "REVISION"
+        severidad_maxima = "ALTA"
+
+    elif len(faltantes) > 0:
         estado = "ADVERTENCIA"
         severidad_maxima = "MEDIA"
 
@@ -1210,6 +1237,7 @@ Reglas:
             "alertas": len(alertas)
         },
         "faltantes": faltantes,
+        "faltantes_priorizados": faltantes_priorizados,
         "alertas": alertas,
         "total_archivos": len(archivos_validos),
         "procesados": len(resultados),
