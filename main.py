@@ -1153,52 +1153,45 @@ Reglas:
                 consolidado[campo] = valor_nuevo
 
     # =========================
-    # REFUERZO FINAL PESO
-    # =========================
-    if not consolidado.get("peso_unidad") or not consolidado.get("peso_total"):
-        for item in resultados:
-            data = item.get("ocr_json", {})
-            for val in data.values():
-                texto = str(val).upper()
-
-                if "LBS" in texto or "LB" in texto:
-                    numeros = "".join(filter(str.isdigit, texto))
-                    if numeros and not consolidado.get("peso_total"):
-                        consolidado["peso_total"] = int(numeros)
-                    if not consolidado.get("peso_unidad"):
-                        consolidado["peso_unidad"] = "LBS"
-
-                elif "KGS" in texto or "KG" in texto:
-                    numeros = "".join(filter(str.isdigit, texto))
-                    if numeros and not consolidado.get("peso_total"):
-                        consolidado["peso_total"] = int(numeros)
-                    if not consolidado.get("peso_unidad"):
-                        consolidado["peso_unidad"] = "KGS"
-
-    # =========================
-    # ESTADO / FALTANTES / ALERTAS
+    # FALTANTES INTELIGENTES 🔥
     # =========================
     faltantes = []
     alertas = []
 
-    campos_requeridos = [
-        "cliente",
-        "proveedor",
-        "paqueteria",
-        "tracking",
-        "descripcion",
-        "cantidad_bultos",
-        "peso_total",
-        "peso_unidad",
-    ]
+    def es_faltante(valor):
+        if valor is None:
+            return True
+        if isinstance(valor, str):
+            v = valor.strip().lower()
+            if v in ["", "null", "no legible", "n/a", "na", "unknown"]:
+                return True
+        return False
 
-    for campo in campos_requeridos:
-        valor = consolidado.get(campo)
-        if valor in [None, "", "null"]:
-            faltantes.append({
-                "campo": campo,
-                "valor": "No legible"
-            })
+    if es_faltante(consolidado.get("cliente")):
+        faltantes.append({"campo": "cliente", "valor": "No legible o ausente"})
+
+    if es_faltante(consolidado.get("proveedor")):
+        faltantes.append({"campo": "proveedor", "valor": "No legible o ausente"})
+
+    if es_faltante(consolidado.get("paqueteria")):
+        faltantes.append({"campo": "paqueteria", "valor": "No legible o ausente"})
+
+    tracking = consolidado.get("tracking")
+    if es_faltante(tracking) or (isinstance(tracking, str) and len(tracking.strip()) < 8):
+        faltantes.append({"campo": "tracking", "valor": "Inválido o incompleto"})
+
+    descripcion = consolidado.get("descripcion")
+    if es_faltante(descripcion) or (isinstance(descripcion, str) and len(descripcion.strip()) < 10):
+        faltantes.append({"campo": "descripcion", "valor": "Muy corta o no útil"})
+
+    if consolidado.get("cantidad_bultos") in [None, "", "null", 0]:
+        faltantes.append({"campo": "cantidad_bultos", "valor": "No detectado"})
+
+    if consolidado.get("peso_total") in [None, "", "null", 0]:
+        faltantes.append({"campo": "peso_total", "valor": "No detectado"})
+
+    if es_faltante(consolidado.get("peso_unidad")):
+        faltantes.append({"campo": "peso_unidad", "valor": "No detectado"})
 
     estado = "OK"
     severidad_maxima = "NINGUNA"
