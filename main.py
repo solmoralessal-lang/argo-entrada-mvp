@@ -1715,20 +1715,51 @@ async def argo_procesar_desde_ocr(
         raise HTTPException(status_code=500, detail=f"ARGO_PROCESAR_DESDE_OCR error: {str(e)}")
 
 @app.get("/argo/historial")
-def argo_historial():
+async def endpoint_historial(cliente_id: str = Query(default=None), limit: int = Query(default=50)):
     try:
-        registros = obtener_historial_supabase()
+        if not supabase_config_ok():
+            return {
+                "ok": False,
+                "error": "Supabase no configurado",
+                "total": 0,
+                "cliente_id": cliente_id,
+                "operaciones": []
+            }
+
+        url = f"{SUPABASE_URL}/rest/v1/argo_operaciones?select=*"
+        
+        if cliente_id:
+            url += f"&cliente_id=eq.{cliente_id}"
+
+        url += f"&order=created_at.desc&limit={limit}"
+
+        response = requests.get(url, headers=_headers())
+
+        if response.status_code != 200:
+            return {
+                "ok": False,
+                "error": f"Error consultando historial: {response.text}",
+                "total": 0,
+                "cliente_id": cliente_id,
+                "operaciones": []
+            }
+
+        data = response.json()
 
         return {
             "ok": True,
-            "items": registros
+            "total": len(data),
+            "cliente_id": cliente_id,
+            "operaciones": data
         }
 
     except Exception as e:
         return {
             "ok": False,
             "error": str(e),
-            "items": []
+            "total": 0,
+            "cliente_id": cliente_id,
+            "operaciones": []
         }
     
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
