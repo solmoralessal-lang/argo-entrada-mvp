@@ -28,23 +28,54 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
     if not supabase_config_ok():
         raise RuntimeError("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY")
 
+    from datetime import datetime
+
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
+
+    entrada = operacion.get("entrada", {}) or {}
+    ocr = operacion.get("ocr", {}) or {}
+    decision = operacion.get("decision", {}) or {}
+    generacion = operacion.get("generacion", {}) or {}
+
+    cliente_nombre = (
+        entrada.get("cliente")
+        or ocr.get("consolidado", {}).get("cliente")
+        or operacion.get("cliente_nombre")
+        or "SIN_CLIENTE"
+    )
+
+    shipment_id = (
+        entrada.get("shipment_id")
+        or entrada.get("tracking")
+        or ocr.get("consolidado", {}).get("tracking")
+        or operacion.get("shipment_id")
+    )
+
+    estatus_global = (
+        operacion.get("estado")
+        or generacion.get("estado")
+        or "OK"
+    )
 
     payload = {
         "id_operacion": operacion.get("id_operacion"),
-        "timestamp_local": operacion.get("timestamp_local"),
-        "cliente_id": operacion.get("cliente_id"),
-        "cliente_nombre": operacion.get("cliente_nombre"),
-        "shipment_id": operacion.get("shipment_id"),
-        "estatus_global": operacion.get("estatus_global"),
-        "riesgo_global": operacion.get("riesgo_global"),
-        "score_documental_global": operacion.get("score_documental_global"),
-        "semaforo_operacion": operacion.get("semaforo_operacion"),
-        "alertas_totales": operacion.get("alertas_totales"),
-        "control_output_path": operacion.get("control_output_path"),
-        "class_output_path": operacion.get("class_output_path"),
-        "document_output_path": operacion.get("document_output_path"),
-        "master_output_path": operacion.get("master_output_path"),
+        "timestamp_local": datetime.now().replace(microsecond=0).isoformat(),
+        "cliente_id": cliente_nombre,
+        "cliente_nombre": cliente_nombre,
+        "shipment_id": shipment_id,
+        "estatus_global": estatus_global,
+        "riesgo_global": decision.get("accion"),
+        "score_documental_global": None,
+        "semaforo_operacion": operacion.get("severidad_maxima"),
+        "alertas_totales": (
+            generacion.get("conteo", {}).get("alertas")
+            or ocr.get("conteo", {}).get("alertas")
+            or 0
+        ),
+        "control_output_path": generacion.get("ruta_archivo"),
+        "class_output_path": None,
+        "document_output_path": generacion.get("descarga"),
+        "master_output_path": None,
         "aprobada": operacion.get("aprobada", False),
         "aprobada_por": operacion.get("aprobada_por"),
         "fecha_aprobacion": operacion.get("fecha_aprobacion"),
@@ -71,7 +102,7 @@ def obtener_historial_supabase(cliente_id: Optional[str] = None) -> List[Dict[st
     url = (
         f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
         f"?select=*"
-        f"&order=created_at.desc"
+        f"&order=id.desc"
     )
 
     if cliente_id:
@@ -90,12 +121,12 @@ def obtener_dashboard_supabase(cliente_id: Optional[str] = None) -> Dict[str, An
     registros = obtener_historial_supabase(cliente_id)
 
     operaciones_total = len(registros)
-    criticas = sum(1 for r in registros if str(r.get("estatus_global", "")).upper() == "CRITICO")
+    criticas = sum(1 for r in registros if str(r.get("estatus_global", "")).upper() in ["CRITICO", "ALTA", "REVISION"])
     revision = sum(
         1 for r in registros
-        if str(r.get("estatus_global", "")).upper() in ["REVISION", "CON_OBSERVACIONES"]
+        if str(r.get("estatus_global", "")).upper() in ["ADVERTENCIA", "CON_OBSERVACIONES"]
     )
-    operables = sum(1 for r in registros if str(r.get("estatus_global", "")).upper() == "OPERABLE")
+    operables = sum(1 for r in registros if str(r.get("estatus_global", "")).upper() == "OK")
 
     return {
         "ok": True,
@@ -146,6 +177,7 @@ def aprobar_operacion_supabase(id_operacion: str, aprobada_por: str = "sistema")
         "mensaje": "Operación aprobada correctamente",
         "operacion": data[0] if isinstance(data, list) and data else None,
     }
+
 
 def obtener_clientes_supabase() -> Dict[str, Any]:
     registros = obtener_historial_supabase()
