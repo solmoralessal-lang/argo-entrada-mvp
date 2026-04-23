@@ -730,26 +730,46 @@ async def argo_pipeline_clasificar(
         print("DEBUG MASTER:", pipeline_result.get("master") if isinstance(pipeline_result, dict) else None)
         print("DEBUG OPERACIONES:", pipeline_result.get("operaciones") if isinstance(pipeline_result, dict) else None)
         
-        # ===== GUARDAR EN HISTORIAL =====
-        try:
-            print("DEBUG: entrando a guardado de historial")
-            
-            cliente_id = "cliente_bodega_2"
-            cliente_nombre = "Bodega El Güero"
+        # ===== GUARDAR EN HISTORIAL (FIX COMPLETO) =====
+try:
+    print("DEBUG: entrando a guardado de historial")
 
-            registro_historial = normalizar_operacion_para_historial(
-                pipeline_output=pipeline_result,
-                cliente_id=cliente_id,
-                cliente_nombre=cliente_nombre
-            )
+    cliente_id = "cliente_bodega_2"
+    cliente_nombre = "Bodega El Güero"
 
-            print("DEBUG REGISTRO:", registro_historial)
+    # 🔥 ARMAR ESTRUCTURA COMPLETA (CLAVE)
+    pipeline_output_historial = {
+        "ok": True,
+        "modulo": "ARGO_PIPELINE",
+        "id_operacion": id_operacion,
+        "estado": control_json.get("estatus"),
+        "severidad_maxima": "NINGUNA",
+        "decision": {"accion": "CONTINUAR", "razon": "Pipeline OK"},
+        "ocr": {},
+        "generacion": {
+            "entrada": {
+                "cliente": cliente_nombre,
+                "tracking": None
+            },
+            "archivo_generado": None,
+            "ruta_archivo": None,
+            "descarga": None
+        }
+    }
 
-            if registro_historial.get("id_operacion"):
-                guardar_operacion_supabase(registro_historial)
+    registro_historial = normalizar_operacion_para_historial(
+        pipeline_output=pipeline_output_historial,
+        cliente_id=cliente_id,
+        cliente_nombre=cliente_nombre
+    )
 
-        except Exception as e:
-            print("ERROR guardando historial:", str(e))
+    print("DEBUG REGISTRO:", registro_historial)
+
+    if registro_historial.get("id_operacion"):
+        guardar_operacion_supabase(registro_historial)
+
+except Exception as e:
+    print("ERROR guardando historial:", str(e))
 
         return pipeline_result        
 
