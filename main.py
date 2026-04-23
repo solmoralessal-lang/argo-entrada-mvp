@@ -934,12 +934,6 @@ async def login_usuario(payload: dict = Body(...)):
         }
     }
 
-
-@app.get("/argo/historial")
-async def endpoint_historial(cliente_id: str = Query(default=None)):
-    return obtener_historial(cliente_id)
-
-
 @app.get("/argo/clientes")
 async def endpoint_clientes():
     return obtener_clientes_supabase()
