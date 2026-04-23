@@ -1590,4 +1590,81 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
         "descarga": f"/descargar/{output_name}"
     }
 
+@app.post("/argo/procesar_desde_ocr")
+async def argo_procesar_desde_ocr(
+    archivo1: UploadFile = File(None),
+    archivo2: UploadFile = File(None),
+    archivo3: UploadFile = File(None),
+    archivo4: UploadFile = File(None),
+    archivo5: UploadFile = File(None),
+):
+    # =========================
+    # 1) OCR
+    # =========================
+    resultado_ocr = await argo_ocr(
+        archivo1=archivo1,
+        archivo2=archivo2,
+        archivo3=archivo3,
+        archivo4=archivo4,
+        archivo5=archivo5,
+    )
+
+    if not isinstance(resultado_ocr, dict):
+        return {
+            "ok": False,
+            "modulo": "ARGO_PROCESAR_DESDE_OCR",
+            "error": "Respuesta inválida de /argo/ocr"
+        }
+
+    if not resultado_ocr.get("ok"):
+        return {
+            "ok": False,
+            "modulo": "ARGO_PROCESAR_DESDE_OCR",
+            "paso": "ocr",
+            "ocr": resultado_ocr
+        }
+
+    consolidado = resultado_ocr.get("consolidado", {})
+    decision = resultado_ocr.get("decision", {})
+
+    # =========================
+    # 2) GENERAR DESDE OCR
+    # =========================
+    payload_generacion = {
+        "ocr": consolidado,
+        "decision": decision
+    }
+
+    resultado_generacion = await argo_generar_desde_ocr(payload_generacion)
+
+    if not isinstance(resultado_generacion, dict):
+        return {
+            "ok": False,
+            "modulo": "ARGO_PROCESAR_DESDE_OCR",
+            "error": "Respuesta inválida de /argo/generar_desde_ocr",
+            "ocr": resultado_ocr
+        }
+
+    # =========================
+    # 3) RESPUESTA FINAL
+    # =========================
+    return {
+        "ok": resultado_generacion.get("ok", False),
+        "modulo": "ARGO_PROCESAR_DESDE_OCR",
+        "estado": resultado_generacion.get("estado"),
+        "severidad_maxima": resultado_generacion.get("severidad_maxima"),
+        "decision": decision,
+        "ocr": {
+            "estado": resultado_ocr.get("estado"),
+            "severidad_maxima": resultado_ocr.get("severidad_maxima"),
+            "conteo": resultado_ocr.get("conteo"),
+            "faltantes": resultado_ocr.get("faltantes"),
+            "faltantes_priorizados": resultado_ocr.get("faltantes_priorizados"),
+            "consolidado": consolidado,
+            "errores": resultado_ocr.get("errores", []),
+            "procesados": resultado_ocr.get("procesados", 0),
+            "total_archivos": resultado_ocr.get("total_archivos", 0),
+        },
+        "generacion": resultado_generacion
+    }
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
