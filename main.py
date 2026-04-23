@@ -1667,4 +1667,5 @@ async def argo_procesar_desde_ocr(
         },
         "generacion": resultado_generacion
     }
+    
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
