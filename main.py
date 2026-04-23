@@ -932,7 +932,30 @@ async def login_usuario(payload: dict = Body(...)):
             "id_cliente": user["id_cliente"],
             "rol": user["rol"]
         }
-er_dashboard_desde_historial(cliente_id)
+    }
+
+
+@app.get("/argo/historial")
+async def endpoint_historial(cliente_id: str = Query(default=None)):
+    return obtener_historial(cliente_id)
+
+
+@app.get("/argo/clientes")
+async def endpoint_clientes():
+    return obtener_clientes_supabase()
+
+
+@app.get("/argo/dashboard")
+async def endpoint_dashboard(cliente_id: str = Query(default=None)):
+    return obtener_dashboard_desde_historial(cliente_id)
+
+
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def convertir_a_base64(file_bytes):
+    return base64.b64encode(file_bytes).decode("utf-8")
 
 @app.post("/argo/ocr")
 async def argo_ocr(
