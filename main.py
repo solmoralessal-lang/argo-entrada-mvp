@@ -1158,12 +1158,16 @@ Reglas obligatorias:
         if "paqueteria" in nombre_archivo or "label" in nombre_archivo or "etiqueta" in nombre_archivo:
             prioridad_tracking_paqueteria = 3
 
-        # Peso: revisar ambos campos
-        peso_num, peso_uni = extraer_peso_desde_texto(
-            data.get("peso_total") if data.get("peso_total") not in [None, "", "null"] else data.get("peso_unidad")
-        )
+        # Peso: revisar ambos campos y conservar ambos valores
+        peso_num_1, peso_uni_1 = extraer_peso_desde_texto(data.get("peso_total"))
+        peso_num_2, peso_uni_2 = extraer_peso_desde_texto(data.get("peso_unidad"))
+
+        peso_num = peso_num_1 if peso_num_1 is not None else peso_num_2
+        peso_uni = peso_uni_1 if peso_uni_1 is not None else peso_uni_2
+
         if peso_num is not None and consolidado["peso_total"] in [None, "", "null"]:
             consolidado["peso_total"] = peso_num
+
         if peso_uni is not None and consolidado["peso_unidad"] in [None, "", "null"]:
             consolidado["peso_unidad"] = peso_uni
 
