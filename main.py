@@ -1348,12 +1348,15 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
 
     accion = decision.get("accion", "CONTINUAR")
 
-    # 🔥 SI OCR DICE DETENER → NO AVANZA
+    # =========================
+    # SI OCR DICE DETENER → NO AVANZA
+    # =========================
     if accion == "DETENER":
         return {
             "ok": False,
             "modulo": "ARGO_GENERAR_DESDE_OCR",
             "estado": "DETENIDO",
+            "severidad_maxima": "ALTA",
             "razon": "OCR detectó faltantes críticos",
             "decision": decision
         }
@@ -1387,8 +1390,8 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
     shipment_id = tracking if tracking != "No legible" else f"OCR-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     fecha_recepcion = datetime.now().strftime("%m/%d/%Y")
 
-    cantidad = str(cantidad_bultos) if cantidad_bultos else "No legible"
-    peso_total_str = str(peso_total) if peso_total else "No legible"
+    cantidad = str(cantidad_bultos) if cantidad_bultos not in [None, "", "null"] else "No legible"
+    peso_total_str = str(peso_total) if peso_total not in [None, "", "null"] else "No legible"
 
     # =========================
     # ENTRADA
@@ -1415,17 +1418,40 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
     }
 
     # =========================
-    # FALTANTES
+    # FALTANTES REALES PARA ESTA ETAPA
     # =========================
+    campos_requeridos_generacion = [
+        "cliente",
+        "proveedor",
+        "paqueteria",
+        "tracking",
+        "descripcion",
+        "cantidad",
+        "unidad",
+        "peso_total",
+        "direccion_origen",
+        "direccion_destino"
+    ]
+
     faltantes = []
-    for campo, valor in entrada.items():
+    for campo in campos_requeridos_generacion:
+        valor = entrada.get(campo)
         if valor == "No legible":
-            faltantes.append({"campo": campo, "valor": valor})
+            faltantes.append({
+                "campo": campo,
+                "valor": valor
+            })
 
-    estado = "OK"
-    severidad_maxima = "NINGUNA"
-
-    if len(faltantes) > 0:
+    # =========================
+    # ESTADO
+    # =========================
+    if accion == "CONTINUAR":
+        estado = "OK"
+        severidad_maxima = "NINGUNA"
+    elif accion == "CONTINUAR_CON_ALERTA":
+        estado = "ADVERTENCIA"
+        severidad_maxima = "MEDIA"
+    else:
         estado = "ADVERTENCIA"
         severidad_maxima = "MEDIA"
 
@@ -1449,12 +1475,91 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
     ws["B4"] = cliente
     ws["B5"] = proveedor
     ws["B6"] = paqueteria
+
+    ws["B7"].number_format = "@"
     ws["B7"] = tracking
+
     ws["B8"] = descripcion
+    ws["B9"] = entrada["marca"]
+    ws["B10"] = entrada["modelo"]
+    ws["B11"] = entrada["no_parte"]
+    ws["B12"] = entrada["no_lote"]
+    ws["B13"] = entrada["no_serie"]
     ws["B14"] = cantidad
     ws["B15"] = peso_unidad_norm
     ws["B16"] = peso_total_str
+    ws["B17"] = entrada["pais_origen"]
 
+    # =========================
+    # DATOS FALTANTES
+    # =========================
+    ws_df = wb["Datos faltantes"]
+    _clear_sheet(ws_df)
+    ws_df["A1"] = "Campo"
+    ws_df["B1"] = "Valor"
+
+    fila = 2
+    for item in faltantes:
+        ws_df[f"A{fila}"] = item["campo"]
+        ws_df[f"B{fila}"] = item["valor"]
+        fila += 1
+
+    # =========================
+    # ALERTAS
+    # =========================
+    alertas = []
+
+    if accion == "CONTINUAR_CON_ALERTA":
+        alertas.append({
+            "alerta": "Generación con advertencia",
+            "detalle": decision.get("razon", "OCR indicó continuar con alerta"),
+            "severidad": "MEDIA"
+        })
+
+    ws_al = wb["Alertas"]
+    _clear_sheet(ws_al)
+    ws_al["A1"] = "Alerta"
+    ws_al["B1"] = "Detalle"
+    ws_al["C1"] = "Severidad"
+
+    fila = 2
+    for alerta in alertas:
+        ws_al[f"A{fila}"] = alerta.get("alerta", "")
+        ws_al[f"B{fila}"] = alerta.get("detalle", "")
+        ws_al[f"C{fila}"] = alerta.get("severidad", "")
+        fila += 1
+
+    # =========================
+    # RESUMEN OPERATIVO
+    # =========================
+    ws_res = wb["Resumen operativo"]
+    _clear_sheet(ws_res)
+    ws_res["A1"] = "Item"
+    ws_res["B1"] = "Valor"
+
+    resumen = [
+        ("Fecha recepción", fecha_recepcion),
+        ("Cliente", cliente),
+        ("Proveedor", proveedor),
+        ("Paquetería", paqueteria),
+        ("Tracking", tracking),
+        ("Shipment ID", shipment_id),
+        ("País origen", entrada["pais_origen"]),
+        ("Faltantes (#)", len(faltantes)),
+        ("Alertas (#)", len(alertas)),
+        ("Estado", estado),
+        ("Severidad máxima", severidad_maxima),
+    ]
+
+    fila = 2
+    for item, valor in resumen:
+        ws_res[f"A{fila}"] = item
+        ws_res[f"B{fila}"] = valor
+        fila += 1
+
+    # =========================
+    # GUARDADO
+    # =========================
     cliente_archivo = _safe_filename(cliente)
     ult4 = (tracking[-4:] if len(tracking) >= 4 else tracking) or "XXXX"
 
@@ -1472,8 +1577,16 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
         "estado": estado,
         "severidad_maxima": severidad_maxima,
         "decision": decision,
+        "conteo": {
+            "faltantes": len(faltantes),
+            "alertas": len(alertas)
+        },
+        "faltantes": faltantes,
+        "alertas": alertas,
         "entrada": entrada,
+        "control": control_stub,
         "archivo_generado": output_name,
+        "ruta_archivo": output_path,
         "descarga": f"/descargar/{output_name}"
     }
 
