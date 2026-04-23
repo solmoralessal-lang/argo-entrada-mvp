@@ -988,7 +988,9 @@ async def argo_ocr(
     resultados = []
     errores = []
 
+    # =========================
     # OCR
+    # =========================
     for file in archivos_validos:
         try:
             contenido = await file.read()
@@ -999,22 +1001,7 @@ async def argo_ocr(
                 input=[{
                     "role": "user",
                     "content": [
-                        {"type": "input_text","text": """
-Extrae JSON:
-
-{
-  "cliente": null,
-  "proveedor": null,
-  "paqueteria": null,
-  "tracking": null,
-  "descripcion": null,
-  "cantidad_bultos": null,
-  "peso_total": null,
-  "peso_unidad": null,
-  "direccion_origen": null,
-  "direccion_destino": null
-}
-""" },
+                        {"type": "input_text","text": "Extrae JSON estructurado de logística"},
                         {"type": "input_image","image_url": f"data:image/jpeg;base64,{imagen_base64}"}
                     ]
                 }]
@@ -1027,12 +1014,14 @@ Extrae JSON:
             except:
                 ocr_json = {}
 
-            resultados.append({"archivo": file.filename,"ocr_json": ocr_json})
+            resultados.append({"archivo": file.filename, "ocr_json": ocr_json})
 
         except Exception as e:
-            errores.append({"archivo": file.filename,"error": str(e)})
+            errores.append({"archivo": file.filename, "error": str(e)})
 
+    # =========================
     # CONSOLIDADO
+    # =========================
     consolidado = {
         "cliente": None,"proveedor": None,"paqueteria": None,"tracking": None,
         "descripcion": None,"cantidad_bultos": None,
@@ -1052,68 +1041,101 @@ Extrae JSON:
     for item in resultados:
         data = item.get("ocr_json", {})
 
-        for campo in consolidado:
+        # 🔥 peso desde ambos campos
+        p,u = extraer_peso(data.get("peso_total") or data.get("peso_unidad"))
+        if p and not consolidado["peso_total"]:
+            consolidado["peso_total"] = p
+        if u and not consolidado["peso_unidad"]:
+            consolidado["peso_unidad"] = u
 
+        for campo in consolidado:
             val = data.get(campo)
 
             if campo in ["peso_total","peso_unidad"]:
-                # 🔥 NUEVO: revisar ambos campos SIEMPRE
-                p,u = extraer_peso(data.get("peso_total") or data.get("peso_unidad"))
-                if p and not consolidado["peso_total"]:
-                    consolidado["peso_total"] = p
-                if u and not consolidado["peso_unidad"]:
-                    consolidado["peso_unidad"] = u
+                continue
 
             elif campo == "cantidad_bultos":
                 if isinstance(val,str) and "OF" in val.upper():
                     try:
                         consolidado[campo] = int(val.split("OF")[1])
-                    except: pass
-                elif not consolidado[campo] and val:
+                    except:
+                        pass
+                elif val and not consolidado[campo]:
                     consolidado[campo] = val
 
             elif campo == "descripcion":
                 if val and (not consolidado[campo] or len(val)>len(consolidado[campo])):
                     consolidado[campo] = val
 
-            elif not consolidado[campo] and val:
+            elif val and not consolidado[campo]:
                 consolidado[campo] = val
 
+    # =========================
     # FALTANTES
+    # =========================
     faltantes = []
     for c in consolidado:
         if not consolidado[c]:
             faltantes.append({"campo": c, "valor": "No detectado"})
 
+    # =========================
     # PRIORIDAD
+    # =========================
     faltantes_priorizados = []
+
     for f in faltantes:
         if f["campo"] in ["cliente","tracking"]:
-            nivel="CRITICO"
+            nivel = "CRITICO"
         elif f["campo"] in ["descripcion","cantidad_bultos"]:
-            nivel="MEDIO"
+            nivel = "MEDIO"
         else:
-            nivel="BAJO"
-        faltantes_priorizados.append({"campo":f["campo"],"nivel":nivel})
+            nivel = "BAJO"
 
+        faltantes_priorizados.append({
+            "campo": f["campo"],
+            "nivel": nivel
+        })
+
+    # =========================
     # ESTADO
-    estado="OK"; severidad="NINGUNA"
-    if any(f["nivel"]=="CRITICO" for f in faltantes_priorizados):
-        estado="REVISION"; severidad="ALTA"
-    elif faltantes:
-        estado="ADVERTENCIA"; severidad="MEDIA"
+    # =========================
+    estado = "OK"
+    severidad = "NINGUNA"
 
+    if any(fp["nivel"] == "CRITICO" for fp in faltantes_priorizados):
+        estado = "REVISION"
+        severidad = "ALTA"
+    elif faltantes:
+        estado = "ADVERTENCIA"
+        severidad = "MEDIA"
+
+    # =========================
     # DECISION
-    accion="CONTINUAR"; razon="OK"
-    if any(f["nivel"]=="CRITICO"):
-        accion="DETENER"
-    elif any(f["nivel"]=="MEDIO"):
-        accion="CONTINUAR_CON_ALERTA"
+    # =========================
+    accion = "CONTINUAR"
+    razon = "OK"
+
+    if any(fp["nivel"] == "CRITICO" for fp in faltantes_priorizados):
+        accion = "DETENER"
+        razon = "Faltantes críticos"
+
+    elif any(fp["nivel"] == "MEDIO" for fp in faltantes_priorizados):
+        accion = "CONTINUAR_CON_ALERTA"
+        razon = "Faltantes medios"
+
+    elif any(fp["nivel"] == "BAJO" for fp in faltantes_priorizados):
+        accion = "CONTINUAR"
+        razon = "Solo faltantes menores"
 
     return {
         "ok": True,
+        "modulo": "ARGO_OCR",
         "estado": estado,
-        "decision":{"accion":accion,"razon":razon},
+        "severidad_maxima": severidad,
+        "decision": {
+            "accion": accion,
+            "razon": razon
+        },
         "faltantes": faltantes,
         "faltantes_priorizados": faltantes_priorizados,
         "consolidado": consolidado,
