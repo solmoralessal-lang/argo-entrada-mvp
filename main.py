@@ -743,7 +743,10 @@ async def argo_pipeline_clasificar(
                 "id_operacion": id_operacion,
                 "estado": control_json.get("estatus"),
                 "severidad_maxima": "NINGUNA",
-                "decision": {"accion": "CONTINUAR", "razon": "Pipeline OK"},
+                "decision": {
+                    "accion": "CONTINUAR",
+                    "razon": "Pipeline OK"
+                },
                 "ocr": {},
                 "generacion": {
                     "entrada": {
@@ -753,7 +756,7 @@ async def argo_pipeline_clasificar(
                             or pipeline_result.get("tracking")
                             or pipeline_result.get("shipment_id")
                         )
-                    }
+                    },
                     "archivo_generado": None,
                     "ruta_archivo": None,
                     "descarga": None
