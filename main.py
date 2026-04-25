@@ -748,8 +748,12 @@ async def argo_pipeline_clasificar(
                 "generacion": {
                     "entrada": {
                         "cliente": cliente_nombre,
-                        "tracking": None
-                    },
+                        "tracking": (
+                            control_json.get("tracking")
+                            or pipeline_result.get("tracking")
+                            or pipeline_result.get("shipment_id")
+                        )
+                    }
                     "archivo_generado": None,
                     "ruta_archivo": None,
                     "descarga": None
