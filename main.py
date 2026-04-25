@@ -750,16 +750,19 @@ async def argo_pipeline_clasificar(
                 "ocr": {},
                 "generacion": {
                     "entrada": {
-                        "cliente": cliente_nombre,
+                        "cliente": (
+                            pipeline_result.get("cliente")
+                            or cliente_nombre
+                        ),
                         "tracking": (
-                            control_json.get("tracking")
-                            or pipeline_result.get("tracking")
+                            pipeline_result.get("tracking")
                             or pipeline_result.get("shipment_id")
+                            or control_json.get("tracking")
                         )
                     },
-                    "archivo_generado": None,
-                    "ruta_archivo": None,
-                    "descarga": None
+                    "archivo_generado": pipeline_result.get("archivo_generado"),
+                    "ruta_archivo": pipeline_result.get("ruta_archivo"),
+                    "descarga": pipeline_result.get("descarga")
                 }
             }
 
