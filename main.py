@@ -1618,8 +1618,7 @@ async def procesar_desde_ocr(
         resultados = []
 
         for archivo in archivos:
-            contenido = await archivo.read()
-            ocr = await argo_ocr(contenido)
+            ocr = await argo_ocr(archivo)
             resultados.append(ocr)
 
         ocr_final = resultados[0]
@@ -1639,10 +1638,11 @@ async def procesar_desde_ocr(
             print("Error en generación:", str(e))
 
         operacion = {
-            "cliente_nombre": ocr_final.get("consolidado", {}).get("cliente"),
+            "cliente_nombre": ocr_final.get("consolidado", {}).get("cliente") or "SIN_CLIENTE",
             "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
             "estatus_global": estado_global,
-            "severidad_maxima": ocr_final.get("severidad_maxima"),
+            "semaforo_operacion": ocr_final.get("severidad_maxima"),
+            "riesgo_global": "CRITICO" if ocr_final.get("severidad_maxima") == "ALTA" else "CONTINUAR",
             "aprobada": False,
             "aprobada_por": None,
             "document_output_path": descarga,
@@ -1693,7 +1693,6 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
                 "total": 0,
                 "cliente_id": cliente_id,
                 "operaciones": []
-            }
 
         data = response.json()
 
