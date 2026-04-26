@@ -66,6 +66,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def argo_ocr(file):
+    try:
+        filename = getattr(file, "filename", "archivo.jpg")
+
+        if hasattr(file, "read"):
+            contenido = await file.read()
+        else:
+            contenido = file
+
+        resultado = {
+            "ok": True,
+            "estado": "REVISION",
+            "severidad_maxima": "MEDIA",
+            "conteo": {
+                "faltantes": 3,
+                "alertas": 0
+            },
+            "faltantes": [],
+            "faltantes_priorizados": [],
+            "consolidado": {
+                "cliente": None,
+                "proveedor": "DEMO",
+                "paqueteria": None,
+                "tracking": None,
+                "descripcion": "DETECCION OCR",
+                "cantidad_bultos": None,
+                "peso_total": None,
+                "peso_unidad": None,
+                "direccion_origen": None,
+                "direccion_destino": None
+            },
+            "errores": [],
+            "procesados": 1,
+            "total_archivos": 1
+        }
+
+        return resultado
+
+    except Exception as e:
+        print("ERROR OCR:", str(e))
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+        
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -1703,7 +1748,6 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
                 "total": 0,
                 "cliente_id": cliente_id,
                 "operaciones": []
-            }
 
         data = response.json()
 
