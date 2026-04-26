@@ -1602,108 +1602,72 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
     }
 
 @app.post("/argo/procesar_desde_ocr")
-async def argo_procesar_desde_ocr(
+async def procesar_desde_ocr(
     archivo1: UploadFile = File(None),
     archivo2: UploadFile = File(None),
     archivo3: UploadFile = File(None),
     archivo4: UploadFile = File(None),
     archivo5: UploadFile = File(None),
 ):
-    from datetime import datetime
-
-    # =========================
-    # 1) OCR
-    # =========================
-    resultado_ocr = await argo_ocr(
-        archivo1=archivo1,
-        archivo2=archivo2,
-        archivo3=archivo3,
-        archivo4=archivo4,
-        archivo5=archivo5,
-    )
-
-    if not isinstance(resultado_ocr, dict):
-        return {
-            "ok": False,
-            "modulo": "ARGO_PROCESAR_DESDE_OCR",
-            "error": "Respuesta inválida de /argo/ocr"
-        }
-
-    if not resultado_ocr.get("ok"):
-        return {
-            "ok": False,
-            "modulo": "ARGO_PROCESAR_DESDE_OCR",
-            "paso": "ocr",
-            "ocr": resultado_ocr
-        }
-
-    consolidado = resultado_ocr.get("consolidado", {})
-    decision = resultado_ocr.get("decision", {})
-
-    # =========================
-    # 2) GENERACIÓN
-    # =========================
-    payload_generacion = {
-        "ocr": consolidado,
-        "decision": decision
-    }
-
-    resultado_generacion = await argo_generar_desde_ocr(payload_generacion)
-
-    if not isinstance(resultado_generacion, dict):
-        return {
-            "ok": False,
-            "modulo": "ARGO_PROCESAR_DESDE_OCR",
-            "error": "Respuesta inválida de /argo/generar_desde_ocr",
-            "ocr": resultado_ocr
-        }
-
-    # =========================
-    # 3) GUARDAR EN HISTORIAL (🔥 FIX REAL)
-    # =========================
     try:
-        print("DEBUG: guardando historial desde OCR")
+        archivos = [a for a in [archivo1, archivo2, archivo3, archivo4, archivo5] if a]
 
-        if resultado_generacion.get("ok"):
+        if not archivos:
+            return {"ok": False, "error": "No se enviaron archivos"}
 
-            operacion_historial = {
-                "id_operacion": f"OP-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-                "estado": resultado_generacion.get("estado"),
-                "severidad_maxima": resultado_generacion.get("severidad_maxima"),
-                "decision": decision,
-                "ocr": resultado_ocr,
-                "generacion": resultado_generacion
-            }
+        # 1. OCR
+        ocr = await ejecutar_ocr_multiarchivo(archivos)
 
-            print("DEBUG HISTORIAL:", operacion_historial)
+        # 🔥 CAMBIO CLAVE: FORZAR CONTINUAR
+        decision = {
+            "accion": "CONTINUAR",
+            "razon": "Se permite continuar aunque existan faltantes"
+        }
 
-            guardar_operacion_supabase(operacion_historial)
+        estado_global = "INCOMPLETO" if ocr.get("severidad_maxima") == "ALTA" else "OK"
+
+        # 2. GENERACIÓN (aunque esté incompleto)
+        generacion = {}
+        descarga = None
+
+        try:
+            generacion = await generar_desde_ocr(ocr)
+
+            if generacion.get("ok") and generacion.get("descarga"):
+                descarga = generacion.get("descarga")
+
+        except Exception as e:
+            print("Error en generación:", str(e))
+
+        # 3. GUARDAR OPERACIÓN SIEMPRE
+        operacion = {
+            "cliente_nombre": ocr.get("consolidado", {}).get("cliente"),
+            "shipment_id": ocr.get("consolidado", {}).get("tracking"),
+            "estatus_global": estado_global,
+            "severidad_maxima": ocr.get("severidad_maxima"),
+            "aprobada": False,
+            "aprobada_por": None,
+            "document_output_path": descarga,
+        }
+
+        await guardar_operacion(operacion)
+
+        return {
+            "ok": True,
+            "modulo": "ARGO_PROCESAR_DESDE_OCR",
+            "estado": estado_global,
+            "severidad_maxima": ocr.get("severidad_maxima"),
+            "decision": decision,
+            "ocr": ocr,
+            "generacion": generacion,
+        }
 
     except Exception as e:
-        print("ERROR guardando historial OCR:", str(e))
-
-    # =========================
-    # 4) RESPUESTA FINAL
-    # =========================
-    return {
-        "ok": resultado_generacion.get("ok", False),
-        "modulo": "ARGO_PROCESAR_DESDE_OCR",
-        "estado": resultado_generacion.get("estado"),
-        "severidad_maxima": resultado_generacion.get("severidad_maxima"),
-        "decision": decision,
-        "ocr": {
-            "estado": resultado_ocr.get("estado"),
-            "severidad_maxima": resultado_ocr.get("severidad_maxima"),
-            "conteo": resultado_ocr.get("conteo"),
-            "faltantes": resultado_ocr.get("faltantes"),
-            "faltantes_priorizados": resultado_ocr.get("faltantes_priorizados"),
-            "consolidado": consolidado,
-            "errores": resultado_ocr.get("errores", []),
-            "procesados": resultado_ocr.get("procesados", 0),
-            "total_archivos": resultado_ocr.get("total_archivos", 0),
-        },
-        "generacion": resultado_generacion
-    }
+        print("ERROR GENERAL:", str(e))
+        return {
+            "ok": False,
+            "error": str(e)
+        }
     
 @app.get("/argo/historial")
 async def endpoint_historial(cliente_id: str = Query(default=None), limit: int = Query(default=50)):
