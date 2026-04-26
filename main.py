@@ -1615,16 +1615,13 @@ async def procesar_desde_ocr(
         if not archivos:
             return {"ok": False, "error": "No se enviaron archivos"}
 
-        # 🔥 USAMOS TU OCR ACTUAL (UNO POR UNO)
         resultados = []
 
         for archivo in archivos:
             contenido = await archivo.read()
-
-            ocr = await argo_ocr(contenido)  # ← usa tu función actual
+            ocr = await argo_ocr(contenido)
             resultados.append(ocr)
 
-        # 🔥 CONSOLIDADO SIMPLE (usa el primero por ahora)
         ocr_final = resultados[0]
 
         estado_global = "INCOMPLETO" if ocr_final.get("severidad_maxima") == "ALTA" else "OK"
@@ -1658,7 +1655,7 @@ async def procesar_desde_ocr(
             "estado": estado_global,
             "severidad_maxima": ocr_final.get("severidad_maxima"),
             "ocr": ocr_final,
-            "generacion": generacion,
+            "generacion": generacion
         }
 
     except Exception as e:
