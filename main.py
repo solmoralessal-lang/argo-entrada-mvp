@@ -1693,6 +1693,7 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
                 "total": 0,
                 "cliente_id": cliente_id,
                 "operaciones": []
+            }
 
         data = response.json()
 
