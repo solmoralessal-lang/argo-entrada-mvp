@@ -1617,8 +1617,18 @@ async def procesar_desde_ocr(
 
         resultados = []
 
+        from fastapi import UploadFile
+        from io import BytesIO
+
         for archivo in archivos:
-            ocr = await argo_ocr(archivo)
+            contenido = await archivo.read()
+
+            fake_file = UploadFile(
+                filename=archivo.filename,
+                file=BytesIO(contenido)
+            )
+
+            ocr = await argo_ocr(fake_file)
             resultados.append(ocr)
 
         ocr_final = resultados[0]
@@ -1693,7 +1703,6 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
                 "total": 0,
                 "cliente_id": cliente_id,
                 "operaciones": []
-            }
 
         data = response.json()
 
