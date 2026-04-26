@@ -1615,23 +1615,25 @@ async def procesar_desde_ocr(
         if not archivos:
             return {"ok": False, "error": "No se enviaron archivos"}
 
-        # 1. OCR
-        ocr = await ejecutar_ocr_multiarchivo(archivos)
+        # 🔥 USAMOS TU OCR ACTUAL (UNO POR UNO)
+        resultados = []
 
-        # 🔥 CAMBIO CLAVE: FORZAR CONTINUAR
-        decision = {
-            "accion": "CONTINUAR",
-            "razon": "Se permite continuar aunque existan faltantes"
-        }
+        for archivo in archivos:
+            contenido = await archivo.read()
 
-        estado_global = "INCOMPLETO" if ocr.get("severidad_maxima") == "ALTA" else "OK"
+            ocr = await argo_ocr(contenido)  # ← usa tu función actual
+            resultados.append(ocr)
 
-        # 2. GENERACIÓN (aunque esté incompleto)
-        generacion = {}
+        # 🔥 CONSOLIDADO SIMPLE (usa el primero por ahora)
+        ocr_final = resultados[0]
+
+        estado_global = "INCOMPLETO" if ocr_final.get("severidad_maxima") == "ALTA" else "OK"
+
         descarga = None
+        generacion = {}
 
         try:
-            generacion = await generar_desde_ocr(ocr)
+            generacion = await generar_desde_ocr(ocr_final)
 
             if generacion.get("ok") and generacion.get("descarga"):
                 descarga = generacion.get("descarga")
@@ -1639,12 +1641,11 @@ async def procesar_desde_ocr(
         except Exception as e:
             print("Error en generación:", str(e))
 
-        # 3. GUARDAR OPERACIÓN SIEMPRE
         operacion = {
-            "cliente_nombre": ocr.get("consolidado", {}).get("cliente"),
-            "shipment_id": ocr.get("consolidado", {}).get("tracking"),
+            "cliente_nombre": ocr_final.get("consolidado", {}).get("cliente"),
+            "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
             "estatus_global": estado_global,
-            "severidad_maxima": ocr.get("severidad_maxima"),
+            "severidad_maxima": ocr_final.get("severidad_maxima"),
             "aprobada": False,
             "aprobada_por": None,
             "document_output_path": descarga,
@@ -1654,11 +1655,9 @@ async def procesar_desde_ocr(
 
         return {
             "ok": True,
-            "modulo": "ARGO_PROCESAR_DESDE_OCR",
             "estado": estado_global,
-            "severidad_maxima": ocr.get("severidad_maxima"),
-            "decision": decision,
-            "ocr": ocr,
+            "severidad_maxima": ocr_final.get("severidad_maxima"),
+            "ocr": ocr_final,
             "generacion": generacion,
         }
 
@@ -1697,7 +1696,6 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
                 "total": 0,
                 "cliente_id": cliente_id,
                 "operaciones": []
-            }
 
         data = response.json()
 
