@@ -844,7 +844,7 @@ async def aprobar_operacion(payload: AprobarOperacionRequest):
     try:
         resultado = aprobar_operacion_supabase(
             id_operacion=payload.id_operacion,
-            aprobada_por=payload.aprobada_por
+            usuario=payload.aprobada_por
         )
 
         return {
