@@ -1693,6 +1693,9 @@ async def procesar_desde_ocr(
             print("Error en generación:", str(e))
 
         operacion = {
+            "id_operacion": f"OP-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+            "timestamp_local": datetime.now().isoformat(timespec="seconds"),
+            "cliente_id": ocr_final.get("consolidado", {}).get("cliente") or "SIN_CLIENTE",
             "cliente_nombre": ocr_final.get("consolidado", {}).get("cliente") or "SIN_CLIENTE",
             "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
             "estatus_global": estado_global,
