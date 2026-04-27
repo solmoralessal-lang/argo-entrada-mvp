@@ -1151,14 +1151,14 @@ Reglas obligatorias:
                     }
 
             resultados.append({
-                "archivo": getattr(file, "filename", "archivo.jpg"),
+                "archivo": file.filename,
                 "ocr_raw": texto,
                 "ocr_json": ocr_json
             })
 
         except Exception as e:
             errores.append({
-                "archivo": getattr(file, "filename", "archivo.jpg") if file else None,
+                "archivo": file.filename if file else None,
                 "error": str(e)
             })
 
@@ -1692,27 +1692,18 @@ async def procesar_desde_ocr(
         except Exception as e:
             print("Error en generación:", str(e))
 
-        from datetime import datetime
-        import uuid
-
-        cliente_detectado = ocr_final.get("consolidado", {}).get("cliente") or "SIN_CLIENTE"
-
         operacion = {
-            "id_operacion": f"OP-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(uuid.uuid4())[:8].upper()}",
-            "timestamp_local": datetime.now().isoformat(timespec="seconds"),
-            "cliente_id": cliente_detectado,
-            "cliente_nombre": cliente_detectado,
+            "cliente_nombre": payload.get("cliente_id", "SIN_CLIENTE"),
             "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
             "estatus_global": estado_global,
             "semaforo_operacion": ocr_final.get("severidad_maxima"),
             "riesgo_global": "CRITICO" if ocr_final.get("severidad_maxima") == "ALTA" else "CONTINUAR",
-            "alertas_totales": len(ocr_final.get("alertas", [])),
             "aprobada": False,
             "aprobada_por": None,
             "document_output_path": descarga,
         }
 
-        guardar_operacion_supabase(operacion)
+        await guardar_operacion(operacion)
 
         return {
             "ok": True,
@@ -1757,7 +1748,6 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
                 "total": 0,
                 "cliente_id": cliente_id,
                 "operaciones": []
-            }
 
         data = response.json()
 
