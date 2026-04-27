@@ -1712,7 +1712,7 @@ async def procesar_desde_ocr(
             "document_output_path": descarga,
         }
 
-        await guardar_operacion_supabase(operacion)
+        guardar_operacion_supabase(operacion)
 
         return {
             "ok": True,
