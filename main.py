@@ -1151,14 +1151,14 @@ Reglas obligatorias:
                     }
 
             resultados.append({
-                "archivo": getattr(file, "filename", "archivo.jpg"),
+                "archivo": file.filename,
                 "ocr_raw": texto,
                 "ocr_json": ocr_json
             })
 
         except Exception as e:
             errores.append({
-                "archivo": getattr(file, "filename", "archivo.jpg") if file else None,
+                "archivo": file.filename if file else None,
                 "error": str(e)
             })
 
@@ -1693,7 +1693,7 @@ async def procesar_desde_ocr(
             print("Error en generación:", str(e))
 
         operacion = {
-            "cliente_nombre": payload.get("cliente_id", "SIN_CLIENTE"),
+            "cliente_nombre": ocr_final.get("consolidado", {}).get("cliente") or "SIN_CLIENTE",
             "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
             "estatus_global": estado_global,
             "semaforo_operacion": ocr_final.get("severidad_maxima"),
