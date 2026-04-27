@@ -1151,14 +1151,14 @@ Reglas obligatorias:
                     }
 
             resultados.append({
-                "archivo": file.filename,
+                "archivo": getattr(file, "filename", "archivo.jpg"),
                 "ocr_raw": texto,
                 "ocr_json": ocr_json
             })
 
         except Exception as e:
             errores.append({
-                "archivo": file.filename if file else None,
+                "archivo": getattr(file, "filename", "archivo.jpg") if file else None,
                 "error": str(e)
             })
 
