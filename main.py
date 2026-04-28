@@ -1703,7 +1703,7 @@ async def procesar_desde_ocr(
             "document_output_path": descarga,
         }
 
-        await guardar_operacion(operacion)
+        guardar_operacion_supabase(operacion)
 
         return {
             "ok": True,
@@ -1768,4 +1768,10 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
             "operaciones": []
         }
     
+
+
+# Alias de compatibilidad: evita errores si algún flujo viejo llama guardar_operacion()
+def guardar_operacion(registro):
+    return guardar_operacion_supabase(registro)
+
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
