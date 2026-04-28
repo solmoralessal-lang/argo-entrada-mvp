@@ -1151,14 +1151,14 @@ Reglas obligatorias:
                     }
 
             resultados.append({
-                "archivo": getattr(file, "filename", "archivo.jpg"),
+                "archivo": file.filename,
                 "ocr_raw": texto,
                 "ocr_json": ocr_json
             })
 
         except Exception as e:
             errores.append({
-                "archivo": getattr(file, "filename", "archivo.jpg") if file else None,
+                "archivo": file.filename if file else None,
                 "error": str(e)
             })
 
@@ -1692,12 +1692,7 @@ async def procesar_desde_ocr(
         except Exception as e:
             print("Error en generación:", str(e))
 
-        from datetime import datetime
-
         operacion = {
-            "id_operacion": f"OP-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-            "timestamp_local": datetime.now().isoformat(timespec="seconds"),
-            "cliente_id": "Fives Cinetic Mexico S A De C V",
             "cliente_nombre": "Fives Cinetic Mexico S A De C V",
             "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
             "estatus_global": estado_global,
@@ -1706,6 +1701,7 @@ async def procesar_desde_ocr(
             "aprobada": False,
             "aprobada_por": None,
             "document_output_path": descarga,
+            "ocr": ocr_final,
         }
 
         guardar_operacion_supabase(operacion)
@@ -1773,10 +1769,4 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
             "operaciones": []
         }
     
-
-
-# Alias de compatibilidad: evita errores si algún flujo viejo llama guardar_operacion()
-def guardar_operacion(registro):
-    return guardar_operacion_supabase(registro)
-
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
