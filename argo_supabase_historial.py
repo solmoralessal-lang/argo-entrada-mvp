@@ -50,11 +50,7 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
         or ocr.get("consolidado", {}).get("tracking")
     )
 
-    estatus_global = (
-        generacion.get("estado")
-        or operacion.get("estado")
-        or "OK"
-    )
+    sem = operacion.get("semaforo_operacion") or ocr.get("severidad_maxima"); estatus_global = ("CRITICO" if sem == "ALTA" else ("ADVERTENCIA" if sem == "MEDIA" else "OK"))
 
     payload = {
         "id_operacion": operacion.get("id_operacion"),
