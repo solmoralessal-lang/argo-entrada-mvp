@@ -65,7 +65,7 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
 
         "shipment_id": shipment_id,
         "estatus_global": estatus_global,
-        "riesgo_global": operacion.get("riesgo_global") or decision.get("accion"),
+        "riesgo_global": ("CRITICO" if (operacion.get("semaforo_operacion") or ocr.get("severidad_maxima")) == "ALTA" else ("CONTINUAR_CON_ALERTA" if (operacion.get("semaforo_operacion") or ocr.get("severidad_maxima")) == "MEDIA" else "CONTINUAR")),
         "semaforo_operacion": operacion.get("semaforo_operacion") or operacion.get("severidad_maxima") or ocr.get("severidad_maxima"),
 
         "alertas_totales": (
