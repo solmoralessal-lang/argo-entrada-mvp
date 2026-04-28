@@ -1692,7 +1692,12 @@ async def procesar_desde_ocr(
         except Exception as e:
             print("Error en generación:", str(e))
 
+        from datetime import datetime
+
         operacion = {
+            "id_operacion": f"OP-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+            "timestamp_local": datetime.now().isoformat(timespec="seconds"),
+            "cliente_id": "Fives Cinetic Mexico S A De C V",
             "cliente_nombre": "Fives Cinetic Mexico S A De C V",
             "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
             "estatus_global": estado_global,
