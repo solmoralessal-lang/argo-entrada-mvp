@@ -1738,7 +1738,7 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
         url = f"{SUPABASE_URL}/rest/v1/argo_operaciones?select=*"
         
         if cliente_id:
-            url += f"&cliente_id=eq.{cliente_id}"
+            import urllib.parse; url += f"&cliente_id=eq.{urllib.parse.quote(cliente_id)}"
 
         url += f"&order=created_at.desc&limit={limit}"
 
