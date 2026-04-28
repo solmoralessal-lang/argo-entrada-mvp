@@ -44,7 +44,7 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
         or "SIN_CLIENTE"
     )
 
-    shipment_id = ((entrada.get("shipment_id") or ocr.get("consolidado", {}).get("tracking") or "").replace(" ", "").strip())
+    raw_tracking = (entrada.get("shipment_id") or ocr.get("consolidado", {}).get("tracking") or ""); shipment_id = raw_tracking.replace(" ", "").strip(); shipment_id = ("1Z" + shipment_id[2:]) if shipment_id.startswith("12") else shipment_id
 
     sem = operacion.get("semaforo_operacion") or ocr.get("severidad_maxima"); estatus_global = ("CRITICO" if sem == "ALTA" else ("ADVERTENCIA" if sem == "MEDIA" else "OK"))
 
