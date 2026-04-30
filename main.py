@@ -86,7 +86,7 @@ async def argo_ocr(file):
             "faltantes": [],
             "faltantes_priorizados": [],
             "consolidado": {
-                "cliente": None,
+                "cliente": "Fives Cinetic Mexico S A De C V",
                 "proveedor": "DEMO",
                 "paqueteria": None,
                 "tracking": None,
