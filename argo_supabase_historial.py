@@ -80,11 +80,11 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     if response.status_code not in (200, 201):
-    print("🔥 SUPABASE ERROR:", response.status_code, response.text)
-    return {
-        "ok": False,
-        "error": response.text
-    }
+        print("🔥 SUPABASE ERROR:", response.status_code, response.text)
+        return {
+            "ok": False,
+            "error": response.text
+        }
 
     data = response.json()
     return data[0] if isinstance(data, list) and data else payload
