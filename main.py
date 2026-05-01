@@ -1774,39 +1774,51 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
 @app.post("/argo/procesar_desde_ocr")
 async def procesar_desde_ocr(payload: dict):
     try:
-        ocr = payload
+        ocr = payload or {}
 
-        consolidado = ocr.get("consolidado", {})
+        if not isinstance(ocr, dict):
+            return {"ok": False, "error": "Payload OCR inválido"}
 
-        cliente = consolidado.get("cliente") or "Fives Cinetic Mexico S A De C V"
+        consolidado = ocr.get("consolidado", {}) or {}
+
+        if not consolidado.get("cliente"):
+            consolidado["cliente"] = "Fives Cinetic Mexico S A De C V"
+
+        ocr["consolidado"] = consolidado
 
         operacion = {
             "id_operacion": generar_id_operacion(),
-            "cliente": cliente,
-            "estatus_global": "OK",
-            "riesgo_global": "CONTINUAR",
-            "fecha": datetime.now().isoformat()
+            "ocr": ocr,
+            "semaforo_operacion": ocr.get("severidad_maxima") or "MEDIA",
+            "decision": {
+                "accion": "CONTINUAR_CON_ALERTA"
+            },
+            "generacion": {
+                "entrada": {
+                    "cliente": consolidado.get("cliente"),
+                    "shipment_id": consolidado.get("tracking") or generar_id_operacion(),
+                    "tracking": consolidado.get("tracking"),
+                    "proveedor": consolidado.get("proveedor"),
+                    "paqueteria": consolidado.get("paqueteria"),
+                    "descripcion": consolidado.get("descripcion"),
+                },
+                "conteo": ocr.get("conteo", {}),
+            },
         }
 
-        # 🔷 Guardar en Supabase
-        if not supabase_config_ok():
-            return {
-                "ok": False,
-                "error": "Supabase no configurado"
-            }
-
-        guardar_operacion_supabase(operacion)
+        guardado = guardar_operacion_supabase(operacion)
 
         return {
             "ok": True,
-            "operacion": operacion
+            "mensaje": "Operación guardada desde OCR",
+            "operacion": guardado,
         }
 
     except Exception as e:
         print("ERROR PROCESAR OCR:", str(e))
         return {
             "ok": False,
-            "error": str(e)
+            "error": str(e),
         }
     
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
