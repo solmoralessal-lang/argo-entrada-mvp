@@ -1646,138 +1646,11 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
         "descarga": f"/descargar/{output_name}"
     }
 
-@app.post("/argo/procesar_desde_ocr")
-async def procesar_desde_ocr(
-    archivo1: UploadFile = File(None),
-    archivo2: UploadFile = File(None),
-    archivo3: UploadFile = File(None),
-    archivo4: UploadFile = File(None),
-    archivo5: UploadFile = File(None),
-):
-    try:
-        archivos = [a for a in [archivo1, archivo2, archivo3, archivo4, archivo5] if a]
-
-        if not archivos:
-            return {"ok": False, "error": "No se enviaron archivos"}
-
-        resultados = []
-
-        from fastapi import UploadFile
-        from io import BytesIO
-
-        for archivo in archivos:
-            contenido = await archivo.read()
-
-            fake_file = UploadFile(
-                filename=archivo.filename,
-                file=BytesIO(contenido)
-            )
-
-            ocr = await argo_ocr(fake_file)
-            resultados.append(ocr)
-
-        ocr_final = resultados[0]
-
-        estado_global = "INCOMPLETO" if ocr_final.get("severidad_maxima") == "ALTA" else "OK"
-
-        descarga = None
-        generacion = {}
-
-        try:
-            generacion = await generar_desde_ocr(ocr_final)
-
-            if generacion.get("ok") and generacion.get("descarga"):
-                descarga = generacion.get("descarga")
-
-        except Exception as e:
-            print("Error en generación:", str(e))
-
-        operacion = {
-            "id_operacion": f"OP-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-            "timestamp_local": datetime.now().isoformat(timespec="seconds"),
-            "cliente_nombre": "Fives Cinetic Mexico S A De C V",
-            "shipment_id": ocr_final.get("consolidado", {}).get("tracking"),
-            "estatus_global": estado_global,
-            "semaforo_operacion": ocr_final.get("severidad_maxima"),
-            "riesgo_global": "CRITICO" if ocr_final.get("severidad_maxima") == "ALTA" else "CONTINUAR",
-            "aprobada": False,
-            "aprobada_por": None,
-            "document_output_path": descarga,
-            "ocr": ocr_final,
-        }
-
-        guardar_operacion_supabase(operacion)
-
-        return {
-            "ok": True,
-            "estado": estado_global,
-            "severidad_maxima": ocr_final.get("severidad_maxima"),
-            "ocr": ocr_final,
-            "generacion": generacion
-        }
-
-    except Exception as e:
-        print("ERROR GENERAL:", str(e))
-        return {
-            "ok": False,
-            "error": str(e)
-        }
-    
-@app.get("/argo/historial")
-async def endpoint_historial(cliente_id: str = Query(default=None), limit: int = Query(default=50)):
-    try:
-        if not supabase_config_ok():
-            return {
-                "ok": False,
-                "error": "Supabase no configurado",
-                "total": 0,
-                "cliente_id": cliente_id,
-                "operaciones": []
-            }
-
-        url = f"{SUPABASE_URL}/rest/v1/argo_operaciones?select=*"
-        
-        if cliente_id:
-            import urllib.parse; url += f"&cliente_id=eq.{urllib.parse.quote(cliente_id)}"
-
-        url += f"&order=created_at.desc&limit={limit}"
-
-        response = requests.get(url, headers=_headers())
-
-        if response.status_code != 200:
-            return {
-                "ok": False,
-                "error": f"Error consultando historial: {response.text}",
-                "total": 0,
-                "cliente_id": cliente_id,
-                "operaciones": []
-            }
-
-        data = response.json()
-
-        return {
-            "ok": True,
-            "total": len(data),
-            "cliente_id": cliente_id,
-            "operaciones": data
-        }
-
-    except Exception as e:
-        return {
-            "ok": False,
-            "error": str(e),
-            "total": 0,
-            "cliente_id": cliente_id,
-            "operaciones": []
-        }
 
 @app.post("/argo/procesar_desde_ocr")
 async def procesar_desde_ocr(payload: dict):
     try:
         ocr = payload or {}
-
-        if not isinstance(ocr, dict):
-            return {"ok": False, "error": "Payload OCR inválido"}
 
         consolidado = ocr.get("consolidado", {}) or {}
 
@@ -1785,6 +1658,8 @@ async def procesar_desde_ocr(payload: dict):
             consolidado["cliente"] = "Fives Cinetic Mexico S A De C V"
 
         ocr["consolidado"] = consolidado
+
+        tracking = consolidado.get("tracking") or generar_id_operacion()
 
         operacion = {
             "id_operacion": generar_id_operacion(),
@@ -1796,8 +1671,8 @@ async def procesar_desde_ocr(payload: dict):
             "generacion": {
                 "entrada": {
                     "cliente": consolidado.get("cliente"),
-                    "shipment_id": consolidado.get("tracking") or generar_id_operacion(),
-                    "tracking": consolidado.get("tracking"),
+                    "shipment_id": tracking,
+                    "tracking": tracking,
                     "proveedor": consolidado.get("proveedor"),
                     "paqueteria": consolidado.get("paqueteria"),
                     "descripcion": consolidado.get("descripcion"),
@@ -1807,6 +1682,9 @@ async def procesar_desde_ocr(payload: dict):
         }
 
         guardado = guardar_operacion_supabase(operacion)
+
+        if isinstance(guardado, dict) and guardado.get("ok") is False:
+            return guardado
 
         return {
             "ok": True,
@@ -1820,5 +1698,6 @@ async def procesar_desde_ocr(payload: dict):
             "ok": False,
             "error": str(e),
         }
-    
+
+
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
