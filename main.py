@@ -1770,5 +1770,43 @@ async def endpoint_historial(cliente_id: str = Query(default=None), limit: int =
             "cliente_id": cliente_id,
             "operaciones": []
         }
+
+@app.post("/argo/procesar_desde_ocr")
+async def procesar_desde_ocr(payload: dict):
+    try:
+        ocr = payload
+
+        consolidado = ocr.get("consolidado", {})
+
+        cliente = consolidado.get("cliente") or "Fives Cinetic Mexico S A De C V"
+
+        operacion = {
+            "id_operacion": generar_id_operacion(),
+            "cliente": cliente,
+            "estatus_global": "OK",
+            "riesgo_global": "CONTINUAR",
+            "fecha": datetime.now().isoformat()
+        }
+
+        # 🔷 Guardar en Supabase
+        if not supabase_config_ok():
+            return {
+                "ok": False,
+                "error": "Supabase no configurado"
+            }
+
+        guardar_operacion_supabase(operacion)
+
+        return {
+            "ok": True,
+            "operacion": operacion
+        }
+
+    except Exception as e:
+        print("ERROR PROCESAR OCR:", str(e))
+        return {
+            "ok": False,
+            "error": str(e)
+        }
     
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
