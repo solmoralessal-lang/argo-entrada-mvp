@@ -17,6 +17,8 @@ from argo_dashboard import build_dashboard_output
 from utils_operacion import generar_id_operacion, escribir_log_operacion
 from openpyxl import load_workbook
 import re
+
+from argo_excel_report import generar_reporte_ejecutivo
 from datetime import datetime
 from argo_control import argo_control_validar_v2
 from argo_historial import (
