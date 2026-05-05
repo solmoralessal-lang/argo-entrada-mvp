@@ -1653,7 +1653,6 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
 async def procesar_desde_ocr(payload: dict):
     try:
         ocr = payload or {}
-
         consolidado = ocr.get("consolidado", {}) or {}
 
         if not consolidado.get("cliente"):
@@ -1662,9 +1661,10 @@ async def procesar_desde_ocr(payload: dict):
         ocr["consolidado"] = consolidado
 
         tracking = consolidado.get("tracking") or generar_id_operacion()
+        id_operacion = generar_id_operacion()
 
         operacion = {
-            "id_operacion": generar_id_operacion(),
+            "id_operacion": id_operacion,
             "ocr": ocr,
             "semaforo_operacion": ocr.get("severidad_maxima") or "MEDIA",
             "decision": {
@@ -1678,9 +1678,42 @@ async def procesar_desde_ocr(payload: dict):
                     "proveedor": consolidado.get("proveedor"),
                     "paqueteria": consolidado.get("paqueteria"),
                     "descripcion": consolidado.get("descripcion"),
+                    "peso_total": consolidado.get("peso_total"),
+                    "cantidad_bultos": consolidado.get("cantidad_bultos"),
                 },
                 "conteo": ocr.get("conteo", {}),
             },
+        }
+
+        data_reporte = {
+            "cliente": consolidado.get("cliente"),
+            "shipment_id": tracking,
+            "tracking": tracking,
+            "proveedor": consolidado.get("proveedor"),
+            "paqueteria": consolidado.get("paqueteria"),
+            "descripcion": consolidado.get("descripcion"),
+            "peso_total": consolidado.get("peso_total"),
+            "cantidad_bultos": consolidado.get("cantidad_bultos"),
+            "riesgo_automatico": ocr.get("severidad_maxima") or "MEDIA",
+            "score_documental": ocr.get("score_documental_global") or 0,
+            "fraccion_sugerida": ocr.get("fraccion_sugerida") or "POR_DEFINIR",
+            "confianza_fraccion_pct": ocr.get("confianza_fraccion_pct") or 0,
+            "certeza_final_pct": ocr.get("certeza_final_pct") or 0,
+            "nivel_debida_diligencia": ocr.get("nivel_debida_diligencia") or "POR_DEFINIR",
+        }
+
+        ruta_reporte = generar_reporte_ejecutivo(
+            "PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx",
+            data_reporte,
+            "outputs"
+        )
+
+        nombre_reporte = os.path.basename(ruta_reporte)
+
+        operacion["reporte_ejecutivo"] = {
+            "archivo": nombre_reporte,
+            "ruta": ruta_reporte,
+            "descarga": f"/descargar/{nombre_reporte}"
         }
 
         guardado = guardar_operacion_supabase(operacion)
@@ -1692,6 +1725,10 @@ async def procesar_desde_ocr(payload: dict):
             "ok": True,
             "mensaje": "Operación guardada desde OCR",
             "operacion": guardado,
+            "reporte_ejecutivo": {
+                "archivo": nombre_reporte,
+                "descarga": f"/descargar/{nombre_reporte}"
+            }
         }
 
     except Exception as e:
@@ -1700,6 +1737,5 @@ async def procesar_desde_ocr(payload: dict):
             "ok": False,
             "error": str(e),
         }
-
 
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
