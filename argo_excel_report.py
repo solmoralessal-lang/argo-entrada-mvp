@@ -5,13 +5,16 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.drawing.image import Image
 
+def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
 
-def generar_reporte_ejecutivo(datos_operacion, ruta_salida):
-    """
-    Genera reporte ejecutivo premium ARGO
-    """
+    os.makedirs(carpeta_salida, exist_ok=True)
 
-    plantilla = "PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    ruta_salida = os.path.join(
+        carpeta_salida,
+        f"reporte_ejecutivo_argo_{timestamp}.xlsx"
+    )
 
     wb = load_workbook(plantilla)
     ws = wb.active
