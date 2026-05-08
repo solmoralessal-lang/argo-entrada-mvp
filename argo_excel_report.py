@@ -271,8 +271,13 @@ def generar_reporte_ejecutivo(
     # LOGO
     # =====================================================
 
-    logo_path = "assets/logo_argo.png"
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+    logo_path = os.path.join(
+        BASE_DIR,
+        "assets",
+        "logo_argo.png"
+    )
     if os.path.exists(logo_path):
         try:
             img = Image(logo_path)
