@@ -52,8 +52,7 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     # =========================
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        logo_path = os.path.join(base_dir, "assets", "logo_argo.png")
-
+        logo_path = os.path.join(base_dir, "assets", "logo_argo_excel.jpg")
         print(f"[ARGO] Buscando logo en: {logo_path}")
 
         if os.path.exists(logo_path):
