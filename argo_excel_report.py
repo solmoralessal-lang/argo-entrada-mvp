@@ -19,6 +19,10 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     wb = load_workbook(plantilla)
     ws = wb.active
 
+    # Descombinar celdas existentes de la plantilla para evitar error MergedCell read-only
+    for rango in list(ws.merged_cells.ranges):
+        ws.unmerge_cells(str(rango))
+
     # =========================
     # ESTILOS
     # =========================
