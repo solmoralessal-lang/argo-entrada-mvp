@@ -1,111 +1,66 @@
 import os
 from datetime import datetime
 
-from openpyxl import load_workbook
+from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.drawing.image import Image
 
-def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
 
+def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     os.makedirs(carpeta_salida, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
     ruta_salida = os.path.join(
         carpeta_salida,
         f"reporte_ejecutivo_argo_{timestamp}.xlsx"
     )
 
-    wb = load_workbook(plantilla)
+    wb = Workbook()
     ws = wb.active
+    ws.title = "Reporte Ejecutivo"
 
-    # Descombinar celdas existentes de la plantilla para evitar error MergedCell read-only
-    for rango in list(ws.merged_cells.ranges):
-        ws.unmerge_cells(str(rango))
-
-    # =========================
-    # ESTILOS
-    # =========================
-
-    azul_argo = "102B4E"
-    gris_claro = "EAEAEA"
+    azul = "102B4E"
+    azul_oscuro = "08162B"
+    gris = "EAEAEA"
     blanco = "FFFFFF"
 
     borde = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-
-    titulo_font = Font(
-        name="Calibri",
-        size=20,
-        bold=True,
-        color=blanco
-    )
-
-    subtitulo_font = Font(
-        name="Calibri",
-        size=11,
-        bold=True,
-        color="000000"
-    )
-
-    texto_font = Font(
-        name="Calibri",
-        size=10,
-        color="000000"
+        left=Side(style="thin", color="999999"),
+        right=Side(style="thin", color="999999"),
+        top=Side(style="thin", color="999999"),
+        bottom=Side(style="thin", color="999999"),
     )
 
     # =========================
-    # ENCABEZADO
+    # CONFIGURACIÓN GENERAL
     # =========================
+    ws.sheet_view.showGridLines = False
 
-    ws.merge_cells("B2:H4")
+    ws.column_dimensions["A"].width = 4
+    ws.column_dimensions["B"].width = 24
+    ws.column_dimensions["C"].width = 58
+    ws.column_dimensions["D"].width = 4
+    ws.column_dimensions["E"].width = 18
+    ws.column_dimensions["F"].width = 26
 
-    encabezado = ws["B2"]
-    encabezado.value = "ARGO - REPORTE EJECUTIVO PREMIUM"
-    encabezado.font = titulo_font
-    encabezado.fill = PatternFill(
-        start_color=azul_argo,
-        end_color=azul_argo,
-        fill_type="solid"
-    )
-    encabezado.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
+    for row in range(1, 35):
+        ws.row_dimensions[row].height = 24
 
     # =========================
-    # LOGO ARGO PREMIUM
+    # LOGO
     # =========================
-
     try:
-
         base_dir = os.path.dirname(os.path.abspath(__file__))
-
-        logo_path = os.path.join(
-            base_dir,
-            "assets",
-            "logo_argo.png"
-        )
+        logo_path = os.path.join(base_dir, "assets", "logo_argo.png")
 
         print(f"[ARGO] Buscando logo en: {logo_path}")
 
         if os.path.exists(logo_path):
-
             img = Image(logo_path)
-
-            # Tamaño premium
-            img.width = 240
-            img.height = 95
-
-            # Posición
+            img.width = 210
+            img.height = 85
             ws.add_image(img, "B2")
-
             print("[ARGO] Logo cargado correctamente")
-
         else:
             print(f"[ARGO] Logo no encontrado: {logo_path}")
 
@@ -113,9 +68,22 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
         print(f"[ARGO] Error cargando logo: {e}")
 
     # =========================
-    # DATOS GENERALES
+    # ENCABEZADO
     # =========================
+    ws.merge_cells("B6:F8")
+    ws["B6"] = "ARGO - REPORTE EJECUTIVO PREMIUM"
+    ws["B6"].font = Font(size=22, bold=True, color=blanco)
+    ws["B6"].fill = PatternFill(start_color=azul_oscuro, end_color=azul_oscuro, fill_type="solid")
+    ws["B6"].alignment = Alignment(horizontal="center", vertical="center")
 
+    ws.merge_cells("B9:F9")
+    ws["B9"] = "Automatización inteligente de procesos aduaneros"
+    ws["B9"].font = Font(size=11, italic=True, color="666666")
+    ws["B9"].alignment = Alignment(horizontal="center")
+
+    # =========================
+    # DATOS
+    # =========================
     datos = [
         ("Cliente", datos_operacion.get("cliente")),
         ("Proveedor", datos_operacion.get("proveedor")),
@@ -129,85 +97,41 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
         ("Riesgo", datos_operacion.get("riesgo_global")),
     ]
 
-    fila = 7
+    fila = 12
 
-    for titulo, valor in datos:
-
-        ws[f"B{fila}"] = titulo
-        ws[f"B{fila}"].font = subtitulo_font
-        ws[f"B{fila}"].fill = PatternFill(
-            start_color=gris_claro,
-            end_color=gris_claro,
-            fill_type="solid"
-        )
+    for campo, valor in datos:
+        ws[f"B{fila}"] = campo
+        ws[f"B{fila}"].font = Font(size=11, bold=True, color="000000")
+        ws[f"B{fila}"].fill = PatternFill(start_color=gris, end_color=gris, fill_type="solid")
         ws[f"B{fila}"].border = borde
+        ws[f"B{fila}"].alignment = Alignment(vertical="center")
 
-        ws[f"C{fila}"] = str(valor) if valor else "N/D"
-        ws[f"C{fila}"].font = texto_font
+        ws[f"C{fila}"] = str(valor) if valor not in [None, ""] else "N/D"
+        ws[f"C{fila}"].font = Font(size=11, color="000000")
         ws[f"C{fila}"].border = borde
+        ws[f"C{fila}"].alignment = Alignment(wrap_text=True, vertical="center")
 
         fila += 1
 
     # =========================
     # FECHA
     # =========================
+    ws["E12"] = "Fecha"
+    ws["E12"].font = Font(size=11, bold=True)
+    ws["E12"].fill = PatternFill(start_color=gris, end_color=gris, fill_type="solid")
+    ws["E12"].border = borde
 
-    ws["F7"] = "Fecha"
-    ws["F7"].font = subtitulo_font
-    ws["F7"].fill = PatternFill(
-        start_color=gris_claro,
-        end_color=gris_claro,
-        fill_type="solid"
-    )
-    ws["F7"].border = borde
-
-    ws["G7"] = datetime.now().strftime("%d/%m/%Y %H:%M")
-    ws["G7"].font = texto_font
-    ws["G7"].border = borde
+    ws["F12"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    ws["F12"].font = Font(size=11)
+    ws["F12"].border = borde
 
     # =========================
-    # AJUSTE COLUMNAS
+    # PIE
     # =========================
-
-    columnas = {
-        "B": 25,
-        "C": 45,
-        "F": 18,
-        "G": 25
-    }
-
-    for col, ancho in columnas.items():
-        ws.column_dimensions[col].width = ancho
-
-    # =========================
-    # PIE DE REPORTE
-    # =========================
-
-    fila_footer = fila + 3
-
-    ws.merge_cells(f"B{fila_footer}:G{fila_footer}")
-
-    footer = ws[f"B{fila_footer}"]
-
-    footer.value = (
-        "Reporte generado automáticamente por ARGO v2026 "
-        "- Plataforma Inteligente de Automatización Aduanal"
-    )
-
-    footer.font = Font(
-        name="Calibri",
-        size=9,
-        italic=True,
-        color="666666"
-    )
-
-    footer.alignment = Alignment(
-        horizontal="center"
-    )
-
-    # =========================
-    # GUARDAR
-    # =========================
+    ws.merge_cells("B28:F29")
+    ws["B28"] = "Reporte generado automáticamente por ARGO v2026"
+    ws["B28"].font = Font(size=10, italic=True, color="666666")
+    ws["B28"].alignment = Alignment(horizontal="center", vertical="center")
 
     wb.save(ruta_salida)
 
