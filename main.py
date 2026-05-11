@@ -1693,6 +1693,10 @@ async def procesar_desde_ocr(payload: dict):
         id_operacion = generar_id_operacion()
 
         operacion = {
+
+            "cliente_id": cliente_id,
+            "cliente_nombre": cliente_nombre_login,
+
             "id_operacion": id_operacion,
             "ocr": ocr,
             "semaforo_operacion": ocr.get("severidad_maxima") or "MEDIA",
@@ -1713,7 +1717,8 @@ async def procesar_desde_ocr(payload: dict):
                 "conteo": ocr.get("conteo", {}),
             },
         }
-
+        cliente_id = payload.get("cliente_id") or "cliente_demo"
+        cliente_nombre_login = payload.get("cliente_nombre") or consolidado.get("cliente") or "SIN_CLIENTE"
         data_reporte = {
             "cliente": consolidado.get("cliente"),
             "shipment_id": tracking,

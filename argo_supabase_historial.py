@@ -52,7 +52,7 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
         "id_operacion": operacion.get("id_operacion"),
         "timestamp_local": datetime.now().replace(microsecond=0).isoformat(),
 
-        "cliente_id": cliente_nombre,
+        "cliente_id": operacion.get("cliente_id") or cliente_nombre,
         "cliente_nombre": cliente_nombre,
 
         "shipment_id": shipment_id,
