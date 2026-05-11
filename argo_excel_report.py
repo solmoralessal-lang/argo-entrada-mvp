@@ -41,10 +41,10 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     ws.column_dimensions["B"].width = 25
     ws.column_dimensions["C"].width = 60
     ws.column_dimensions["D"].width = 4
-    ws.column_dimensions["E"].width = 18
-    ws.column_dimensions["F"].width = 28
+    ws.column_dimensions["E"].width = 22
+    ws.column_dimensions["F"].width = 32
 
-    for row in range(1, 35):
+    for row in range(1, 45):
         ws.row_dimensions[row].height = 24
 
     # =========================
@@ -53,6 +53,7 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(base_dir, "assets", "logo_argo_excel.jpg")
+
         print(f"[ARGO] Buscando logo en: {logo_path}")
 
         if os.path.exists(logo_path):
@@ -85,6 +86,9 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     ws["B9"].font = Font(size=11, italic=True, color="666666")
     ws["B9"].alignment = Alignment(horizontal="center")
 
+    # =========================
+    # DATOS GENERALES
+    # =========================
     datos = [
         ("Cliente", datos_operacion.get("cliente")),
         ("Proveedor", datos_operacion.get("proveedor")),
@@ -94,8 +98,6 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
         ("Cantidad Bultos", datos_operacion.get("cantidad_bultos")),
         ("Peso Total", datos_operacion.get("peso_total")),
         ("Unidad Peso", datos_operacion.get("peso_unidad")),
-        ("Estado", datos_operacion.get("estado")),
-        ("Riesgo", datos_operacion.get("riesgo_global")),
     ]
 
     fila = 12
@@ -131,10 +133,101 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     ws["F12"].font = Font(size=11)
     ws["F12"].border = borde
 
-    ws.merge_cells("B28:F29")
-    ws["B28"] = "Reporte generado automáticamente por ARGO v2026"
-    ws["B28"].font = Font(size=10, italic=True, color="666666")
-    ws["B28"].alignment = Alignment(horizontal="center", vertical="center")
+    # =========================
+    # RESUMEN EJECUTIVO
+    # =========================
+    ws.merge_cells("B22:F22")
+    ws["B22"] = "RESUMEN EJECUTIVO"
+    ws["B22"].font = Font(size=14, bold=True, color=blanco)
+    ws["B22"].fill = PatternFill(
+        start_color=azul_oscuro,
+        end_color=azul_oscuro,
+        fill_type="solid"
+    )
+    ws["B22"].alignment = Alignment(horizontal="center", vertical="center")
+
+    riesgo = datos_operacion.get("riesgo_automatico") or "MEDIA"
+    score = datos_operacion.get("score_documental") or 0
+    fraccion = datos_operacion.get("fraccion_sugerida") or "POR_DEFINIR"
+    confianza = datos_operacion.get("confianza_fraccion_pct") or 0
+    certeza = datos_operacion.get("certeza_final_pct") or 0
+    diligencia = datos_operacion.get("nivel_debida_diligencia") or "POR_DEFINIR"
+
+    resumen = (
+        f"La operación fue procesada por ARGO con riesgo automático {riesgo}, "
+        f"score documental {score}, fracción sugerida {fraccion}, "
+        f"confianza de clasificación {confianza}% y certeza final {certeza}%. "
+        f"Nivel de debida diligencia recomendado: {diligencia}."
+    )
+
+    ws.merge_cells("B23:F25")
+    ws["B23"] = resumen
+    ws["B23"].font = Font(size=11, color="000000")
+    ws["B23"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["B23"].border = borde
+
+    # =========================
+    # MATRIZ DOCUMENTAL Y CLASS
+    # =========================
+    ws.merge_cells("B27:F27")
+    ws["B27"] = "MATRIZ DOCUMENTAL Y CLASIFICACIÓN"
+    ws["B27"].font = Font(size=14, bold=True, color=blanco)
+    ws["B27"].fill = PatternFill(
+        start_color=azul_oscuro,
+        end_color=azul_oscuro,
+        fill_type="solid"
+    )
+    ws["B27"].alignment = Alignment(horizontal="center", vertical="center")
+
+    matriz = [
+        ("Riesgo automático", riesgo),
+        ("Score documental", score),
+        ("Fracción sugerida", fraccion),
+        ("Confianza fracción", f"{confianza}%"),
+        ("Certeza final", f"{certeza}%"),
+        ("Debida diligencia", diligencia),
+    ]
+
+    fila_matriz = 29
+
+    for campo, valor in matriz:
+        ws[f"B{fila_matriz}"] = campo
+        ws[f"B{fila_matriz}"].font = Font(size=11, bold=True)
+        ws[f"B{fila_matriz}"].fill = PatternFill(
+            start_color=gris_claro,
+            end_color=gris_claro,
+            fill_type="solid"
+        )
+        ws[f"B{fila_matriz}"].border = borde
+
+        ws[f"C{fila_matriz}"] = str(valor)
+        ws[f"C{fila_matriz}"].font = Font(size=11)
+        ws[f"C{fila_matriz}"].border = borde
+        ws[f"C{fila_matriz}"].alignment = Alignment(wrap_text=True)
+
+        fila_matriz += 1
+
+    # =========================
+    # ADVERTENCIA OPERATIVA
+    # =========================
+    ws.merge_cells("B37:F40")
+    ws["B37"] = (
+        "Advertencia: ARGO procesa información con base en los documentos e imágenes "
+        "proporcionados por el operador. La captura, legibilidad y validez documental "
+        "son responsabilidad del usuario operativo. La clasificación sugerida debe ser "
+        "validada por personal autorizado antes de su uso definitivo."
+    )
+    ws["B37"].font = Font(size=10, italic=True, color="666666")
+    ws["B37"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["B37"].border = borde
+
+    # =========================
+    # PIE
+    # =========================
+    ws.merge_cells("B42:F43")
+    ws["B42"] = "Reporte generado automáticamente por ARGO v2026"
+    ws["B42"].font = Font(size=10, italic=True, color="666666")
+    ws["B42"].alignment = Alignment(horizontal="center", vertical="center")
 
     wb.save(ruta_salida)
 
