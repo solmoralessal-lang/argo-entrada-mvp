@@ -214,7 +214,7 @@ def _clear_sheet(ws, max_rows=200, max_cols=10):
         for c in range(1, max_cols + 1):
             ws.cell(row=r, column=c).value = None
 
-def subir_archivo_a_supabase(file_path: str, bucket: str = SUPABASE_BUCKET) -> str:
+def subir_archivo_a_supabase(file_path: str, bucket: str = SUPABASE_BUCKET) -> dict:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise Exception("Faltan variables de entorno de Supabase")
 
@@ -222,7 +222,9 @@ def subir_archivo_a_supabase(file_path: str, bucket: str = SUPABASE_BUCKET) -> s
         raise Exception(f"Archivo no existe: {file_path}")
 
     file_name = os.path.basename(file_path)
-    upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{file_name}"
+    storage_path = f"outputs/{file_name}"
+
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{storage_path}"
 
     with open(file_path, "rb") as f:
         response = requests.post(
@@ -237,10 +239,37 @@ def subir_archivo_a_supabase(file_path: str, bucket: str = SUPABASE_BUCKET) -> s
         )
 
     if response.status_code not in [200, 201]:
-        raise Exception(f"Error subiendo a Supabase: {response.text}")
+        raise Exception(f"Error subiendo a Supabase: {response.status_code} {response.text}")
 
-    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{file_name}"
-    return public_url
+    signed_url_endpoint = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{storage_path}"
+
+    signed_response = requests.post(
+        signed_url_endpoint,
+        headers={
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Content-Type": "application/json",
+        },
+        json={
+            "expiresIn": 60 * 60 * 24 * 7
+        },
+    )
+
+    signed_url = None
+
+    if signed_response.status_code in [200, 201]:
+        signed_data = signed_response.json()
+        signed_path = signed_data.get("signedURL") or signed_data.get("signedUrl")
+
+        if signed_path:
+            signed_url = f"{SUPABASE_URL}/storage/v1{signed_path}"
+
+    return {
+        "bucket": bucket,
+        "path": storage_path,
+        "file_name": file_name,
+        "signed_url": signed_url,
+    }
 
 @app.post("/entrada/validar")
 def entrada_validar(
@@ -1710,12 +1739,19 @@ async def procesar_desde_ocr(payload: dict):
 
         nombre_reporte = os.path.basename(ruta_reporte)
 
+        reporte_storage = None
+
+        try:
+            reporte_storage = subir_archivo_a_supabase(ruta_reporte)
+        except Exception as supa_err:
+            print(f"WARNING SUPABASE REPORTE EJECUTIVO [{tracking}]: {supa_err}")
+
         operacion["reporte_ejecutivo"] = {
             "archivo": nombre_reporte,
             "ruta": ruta_reporte,
-            "descarga": f"/descargar/{nombre_reporte}"
+            "descarga": f"/descargar/{nombre_reporte}",
+            "storage": reporte_storage,
         }
-
         guardado = guardar_operacion_supabase(operacion)
 
         if isinstance(guardado, dict) and guardado.get("ok") is False:
