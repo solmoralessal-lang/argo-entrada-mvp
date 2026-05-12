@@ -1417,7 +1417,7 @@ Reglas obligatorias:
         razon = "Solo faltantes menores"
 
     return {
-        "ok": len(resultados) > 0,
+        "ok": True,
         "modulo": "ARGO_OCR",
         "estado": estado,
         "severidad_maxima": severidad_maxima,
