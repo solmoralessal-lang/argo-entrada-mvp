@@ -128,11 +128,12 @@ def obtener_dashboard_supabase(cliente_id: Optional[str] = None) -> Dict[str, An
         "ok": True,
         "modulo": "ARGO_DASHBOARD",
         "resumen": {
-            "total": total,
-            "criticas": criticas,
-            "advertencias": advertencias,
-            "ok": ok,
-        },
+        "operaciones_total": total,
+        "criticas": criticas,
+        "revision": advertencias,
+        "operables": ok,
+        "aprobadas": sum(1 for r in registros if r.get("aprobada") is True),
+    },
         "operaciones": registros,
     }
 
