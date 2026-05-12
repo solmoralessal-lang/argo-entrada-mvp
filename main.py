@@ -1689,7 +1689,10 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
 
 
 @app.post("/argo/procesar_desde_ocr")
-async def procesar_desde_ocr(payload: dict):
+async def procesar_desde_ocr(
+    payload: dict,
+    x_cliente_id: str = Header(default=None)
+):
     try:
         ocr = payload or {}
         consolidado = ocr.get("consolidado", {}) or {}
@@ -1702,7 +1705,14 @@ async def procesar_desde_ocr(payload: dict):
         tracking = consolidado.get("tracking") or generar_id_operacion()
         id_operacion = generar_id_operacion()
 
-        cliente_id = payload.get("cliente_id") or "cliente_demo"
+        cliente_id = x_cliente_id or payload.get("cliente_id")
+
+        if not cliente_id:
+            return {
+                "ok": False,
+                "error": "cliente_id requerido"
+            }
+
         cliente_nombre_login = (
             payload.get("cliente_nombre")
             or consolidado.get("cliente")
