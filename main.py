@@ -906,10 +906,6 @@ async def consultar_historial_argo(limit: int = 50):
         "items": data
     }
 
-@app.get("/argo/dashboard")
-async def consultar_dashboard_argo(cliente_id: str | None = None):
-    dashboard = obtener_dashboard_supabase(cliente_id)
-    return dashboard
 
 # =========================================================
 # ENDPOINTS HISTORIAL / DASHBOARD / APROBACION
@@ -983,7 +979,7 @@ def verify_password(password_plano: str, password_guardado: str) -> bool:
     except Exception:
         return False
 
-from fastapi import Body
+from fastapi import Body, Header, Query
 
 @app.post("/argo/login")
 async def login_usuario(payload: dict = Body(...)):
@@ -1045,17 +1041,37 @@ async def endpoint_clientes():
 
 
 @app.get("/argo/dashboard")
-async def endpoint_dashboard(cliente_id: str = Query(default=None)):
-    return obtener_dashboard_desde_historial(cliente_id)
+async def endpoint_dashboard(
+    cliente_id: str = Query(default=None),
+    x_cliente_id: str = Header(default=None)
+):
+    try:
 
+        # =========================================
+        # VALIDACION MULTI-TENANT ENTERPRISE
+        # =========================================
 
-from openai import OpenAI
+        cliente_final = x_cliente_id or cliente_id
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        if not cliente_final:
+            return {
+                "ok": False,
+                "error": "cliente_id requerido"
+            }
 
-def convertir_a_base64(file_bytes):
-    return base64.b64encode(file_bytes).decode("utf-8")
+        dashboard = obtener_dashboard_desde_historial(cliente_final)
 
+        return {
+            "ok": True,
+            "cliente_id": cliente_final,
+            "dashboard": dashboard
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 @app.post("/argo/ocr")
 async def argo_ocr(
     archivo1: UploadFile = File(None),
