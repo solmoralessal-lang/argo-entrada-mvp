@@ -1407,8 +1407,8 @@ Reglas obligatorias:
     razon = "Sin faltantes"
 
     if any(fp["nivel"] == "CRITICO" for fp in faltantes_priorizados):
-        accion = "DETENER"
-        razon = "Faltantes críticos"
+        accion = "CONTINUAR_CON_ALERTA"
+        razon = "Faltantes críticos: operación continúa con baja certeza y requiere revisión"
     elif any(fp["nivel"] == "MEDIO" for fp in faltantes_priorizados):
         accion = "CONTINUAR_CON_ALERTA"
         razon = "Faltantes medios"
@@ -1452,18 +1452,12 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
     accion = decision.get("accion", "CONTINUAR")
 
     # =========================
-    # SI OCR DICE DETENER → NO AVANZA
+    # ENTERPRISE: OCR NUNCA DETIENE
     # =========================
     if accion == "DETENER":
-        return {
-            "ok": False,
-            "modulo": "ARGO_GENERAR_DESDE_OCR",
-            "estado": "DETENIDO",
-            "severidad_maxima": "ALTA",
-            "razon": "OCR detectó faltantes críticos",
-            "decision": decision
-        }
-
+        accion = "CONTINUAR_CON_ALERTA"
+        decision["accion"] = accion
+        decision["razon"] = "Política enterprise: OCR no detiene; continúa con revisión obligatoria"
     # =========================
     # DATOS OCR
     # =========================
