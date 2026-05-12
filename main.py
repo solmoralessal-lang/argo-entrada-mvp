@@ -1698,13 +1698,39 @@ async def procesar_desde_ocr(payload: dict):
             or consolidado.get("cliente")
             or "SIN_CLIENTE"
          )
-        operacion = {
+        salida_class = {}
 
+        try:
+            payload_master = {
+                "meta": {
+                    "id_operacion": id_operacion,
+                    "id_shipment": tracking,
+                    "id_item": None,
+                },
+                "descripcion": consolidado.get("descripcion") or "",
+                "documentos": ocr.get("documentos", []),
+                "control": {
+                    "resumen": {}
+                },
+            }
+
+            salida_class = build_output(payload_master) or {}
+
+        except Exception as class_err:
+            print(f"WARNING ARGO CLASS OCR [{id_operacion}]: {class_err}")
+            salida_class = {}
+
+        class_salida = salida_class.get("salida", {}) if isinstance(salida_class, dict) else {}
+        class_score = class_salida.get("score_documental", {}) or {}
+        class_clasificacion = class_salida.get("clasificacion", {}) or {}
+        class_riesgo = class_salida.get("certeza_y_riesgo", {}) or {}
+
+        operacion = {
             "cliente_id": cliente_id,
             "cliente_nombre": cliente_nombre_login,
-
             "id_operacion": id_operacion,
             "ocr": ocr,
+            "class": salida_class,
             "semaforo_operacion": ocr.get("severidad_maxima") or "MEDIA",
             "decision": {
                 "accion": "CONTINUAR_CON_ALERTA"
@@ -1733,14 +1759,13 @@ async def procesar_desde_ocr(payload: dict):
             "descripcion": consolidado.get("descripcion"),
             "peso_total": consolidado.get("peso_total"),
             "cantidad_bultos": consolidado.get("cantidad_bultos"),
-            "riesgo_automatico": ocr.get("severidad_maxima") or "MEDIA",
-            "score_documental": ocr.get("score_documental_global") or 0,
-            "fraccion_sugerida": ocr.get("fraccion_sugerida") or "POR_DEFINIR",
-            "confianza_fraccion_pct": ocr.get("confianza_fraccion_pct") or 0,
-            "certeza_final_pct": ocr.get("certeza_final_pct") or 0,
-            "nivel_debida_diligencia": ocr.get("nivel_debida_diligencia") or "POR_DEFINIR",
+            "riesgo_automatico": class_riesgo.get("riesgo_automatico") or ocr.get("severidad_maxima") or "MEDIA",
+            "score_documental": class_score.get("score_total_0_100") or ocr.get("score_documental_global") or 0,
+            "fraccion_sugerida": class_clasificacion.get("fraccion_sugerida") or ocr.get("fraccion_sugerida") or "PENDIENTE ARGO CLASS",
+            "confianza_fraccion_pct": class_clasificacion.get("confianza_fraccion_pct") or ocr.get("confianza_fraccion_pct") or 0,
+            "certeza_final_pct": class_riesgo.get("certeza_final_pct") or ocr.get("certeza_final_pct") or 0,
+            "nivel_debida_diligencia": class_score.get("nivel_debida_diligencia") or ocr.get("nivel_debida_diligencia") or "PENDIENTE ARGO CLASS",
         }
-
         ruta_reporte = generar_reporte_ejecutivo(
             "PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx",
             data_reporte,
