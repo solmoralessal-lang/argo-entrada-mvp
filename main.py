@@ -1809,6 +1809,12 @@ async def procesar_desde_ocr(
         }
         guardado = guardar_operacion_supabase(operacion)
 
+        try:
+            from argo_historial import guardar_operacion_historial
+            guardar_operacion_historial(operacion)
+        except Exception as hist_err:
+            print(f"WARNING HISTORIAL LOCAL [{tracking}]: {hist_err}")
+
         if isinstance(guardado, dict) and guardado.get("ok") is False:
             return guardado
 
