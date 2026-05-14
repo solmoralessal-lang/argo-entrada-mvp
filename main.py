@@ -912,8 +912,31 @@ async def consultar_historial_argo(limit: int = 50):
 # =========================================================
 
 @app.post("/argo/operacion/aprobar")
-async def aprobar_operacion(payload: AprobarOperacionRequest):
+async def aprobar_operacion(
+    payload: AprobarOperacionRequest,
+    x_cliente_id: str = Header(default=None),
+    x_usuario_rol: str = Header(default="operador"),
+):
+
     try:
+
+        rol = str(x_usuario_rol or "operador").lower()
+
+        roles_autorizados = [
+            "supervisor",
+            "admin",
+            "admin_cliente",
+            "master_admin",
+        ]
+
+        if rol not in roles_autorizados:
+            return {
+                "ok": False,
+                "error": "Permisos insuficientes para aprobar operaciones",
+                "codigo": "RBAC_DENY",
+                "rol_detectado": rol,
+            }
+
         resultado = aprobar_operacion_supabase(
             id_operacion=payload.id_operacion,
             usuario=payload.aprobada_por
@@ -922,7 +945,12 @@ async def aprobar_operacion(payload: AprobarOperacionRequest):
         return {
             "ok": True,
             "mensaje": "Operación aprobada correctamente",
-            "data": resultado
+            "data": resultado,
+            "rbac": {
+                "rol": rol,
+                "cliente": x_cliente_id,
+                "autorizado": True
+            }
         }
 
     except Exception as e:
