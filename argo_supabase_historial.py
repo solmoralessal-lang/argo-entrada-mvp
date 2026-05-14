@@ -110,7 +110,16 @@ def obtener_historial_supabase(cliente_id: Optional[str] = None) -> List[Dict[st
         )
 
     data = response.json()
-    return data if isinstance(data, list) else []
+
+    if not isinstance(data, list):
+        return []
+
+    for r in data:
+        r["aprobada"] = bool(r.get("aprobada"))
+        r["aprobada_por"] = r.get("aprobada_por") or ""
+        r["fecha_aprobacion"] = r.get("fecha_aprobacion") or ""
+
+    return data
 
 
 # =========================================================
