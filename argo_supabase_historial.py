@@ -138,6 +138,7 @@ def obtener_dashboard_supabase(cliente_id: Optional[str] = None) -> Dict[str, An
     }
 
 
+
 # =========================================================
 # ✅ APROBAR
 # =========================================================
@@ -158,14 +159,34 @@ def aprobar_operacion_supabase(id_operacion: str, usuario: str = "sistema") -> D
     headers = _headers()
     headers["Prefer"] = "return=representation"
 
-    response = requests.patch(url, headers=headers, json=payload)
+    response = requests.patch(
+        url,
+        headers=headers,
+        json=payload,
+    )
 
-    if response.status_code != 200:
+    if response.status_code not in (200, 204):
         raise RuntimeError(
             f"Error aprobando: {response.status_code} - {response.text}"
         )
 
-    return {"ok": True, "mensaje": "Operación aprobada"}
+    try:
+        data = response.json()
+    except Exception:
+        data = []
+
+    if not data:
+        raise RuntimeError(
+            f"No se encontró operación para aprobar: {id_operacion}"
+        )
+
+    return {
+        "ok": True,
+        "mensaje": "Operación aprobada",
+        "id_operacion": id_operacion,
+        "actualizado": data[0],
+    }
+
 
 
 # =========================================================
