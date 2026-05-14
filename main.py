@@ -1815,6 +1815,7 @@ async def procesar_desde_ocr(
         return {
             "ok": True,
             "mensaje": "Operación guardada desde OCR",
+            "debug_guardado": guardado,
             "operacion": guardado,
             "reporte_ejecutivo": {
                 "archivo": nombre_reporte,
