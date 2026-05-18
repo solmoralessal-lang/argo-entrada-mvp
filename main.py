@@ -1122,27 +1122,70 @@ async def endpoint_clientes():
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(
     cliente_id: str = Query(default=None),
-    x_cliente_id: str = Header(default=None)
+    x_cliente_id: str = Header(default=None),
+    x_usuario_email: str = Header(default=None),
 ):
     try:
 
         # =========================================
-        # VALIDACION MULTI-TENANT ENTERPRISE
+        # HARD MULTI-TENANT ISOLATION ENTERPRISE
         # =========================================
 
-        cliente_final = x_cliente_id or cliente_id
-
-        if not cliente_final:
+        if not x_usuario_email:
             return {
                 "ok": False,
-                "error": "cliente_id requerido"
+                "error": "usuario requerido para consultar dashboard",
+                "codigo": "TENANT_AUTH_REQUIRED"
             }
 
-        dashboard = obtener_dashboard_supabase(cliente_final)
+        usuario_rbac = obtener_usuario_rbac(x_usuario_email)
+
+        if not usuario_rbac:
+            return {
+                "ok": False,
+                "error": "Usuario no encontrado",
+                "codigo": "TENANT_USER_NOT_FOUND"
+            }
+
+        if usuario_rbac.get("activo") is False:
+            return {
+                "ok": False,
+                "error": "Usuario inactivo",
+                "codigo": "TENANT_USER_INACTIVE"
+            }
+
+        rol = str(usuario_rbac.get("rol") or "operador").lower()
+        cliente_usuario = usuario_rbac.get("id_cliente")
+
+        cliente_solicitado = x_cliente_id or cliente_id or cliente_usuario
+
+        if not cliente_solicitado:
+            return {
+                "ok": False,
+                "error": "cliente_id requerido",
+                "codigo": "TENANT_CLIENT_REQUIRED"
+            }
+
+        if rol != "master_admin" and cliente_solicitado != cliente_usuario:
+            return {
+                "ok": False,
+                "error": "Acceso denegado al cliente solicitado",
+                "codigo": "TENANT_DENY",
+                "cliente_usuario": cliente_usuario,
+                "cliente_solicitado": cliente_solicitado,
+            }
+
+        dashboard = obtener_dashboard_supabase(cliente_solicitado)
 
         return {
             "ok": True,
-            "cliente_id": cliente_final,
+            "cliente_id": cliente_solicitado,
+            "tenant": {
+                "email": x_usuario_email,
+                "rol": rol,
+                "cliente_usuario": cliente_usuario,
+                "aislamiento": "HARD"
+            },
             "dashboard": dashboard
         }
 
