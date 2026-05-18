@@ -911,35 +911,86 @@ async def consultar_historial_argo(limit: int = 50):
 # ENDPOINTS HISTORIAL / DASHBOARD / APROBACION
 # =========================================================
 
+
+# =========================================================
+# RBAC ENTERPRISE BACKEND
+# =========================================================
+
+ROLES_APROBACION = {"supervisor", "admin", "admin_cliente", "master_admin"}
+ROLES_ADMIN_CLIENTES = {"admin", "admin_cliente", "master_admin"}
+
+
+def obtener_usuario_rbac(email: str):
+    if not email:
+        return None
+
+    if not supabase_config_ok():
+        raise RuntimeError("Supabase no configurado")
+
+    url = f"{SUPABASE_URL}/rest/v1/argo_usuarios?email=eq.{email}&select=email,nombre,id_cliente,rol,activo"
+
+    response = requests.get(url, headers=_headers(), timeout=30)
+
+    if response.status_code != 200:
+        raise RuntimeError(f"Error consultando usuario RBAC: {response.status_code} - {response.text}")
+
+    data = response.json()
+
+    if not data:
+        return None
+
+    return data[0]
+
+
+def validar_permiso_rbac(email: str, roles_permitidos: set, cliente_id: str = None):
+    user = obtener_usuario_rbac(email)
+
+    if not user:
+        return False, None, "Usuario no encontrado"
+
+    if user.get("activo") is False:
+        return False, user, "Usuario inactivo"
+
+    rol = str(user.get("rol") or "operador").lower()
+    cliente_usuario = user.get("id_cliente")
+
+    if rol not in roles_permitidos:
+        return False, user, "Permisos insuficientes"
+
+    if cliente_id and rol != "master_admin" and cliente_usuario != cliente_id:
+        return False, user, "Usuario no pertenece al cliente solicitado"
+
+    return True, user, "Autorizado"
+
 @app.post("/argo/operacion/aprobar")
 async def aprobar_operacion(
     payload: AprobarOperacionRequest,
     x_cliente_id: str = Header(default=None),
+    x_usuario_email: str = Header(default=None),
     x_usuario_rol: str = Header(default="operador"),
 ):
 
     try:
+        permitido, usuario_rbac, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_APROBACION,
+            cliente_id=x_cliente_id,
+        )
 
-        rol = str(x_usuario_rol or "operador").lower()
-
-        roles_autorizados = [
-            "supervisor",
-            "admin",
-            "admin_cliente",
-            "master_admin",
-        ]
-
-        if rol not in roles_autorizados:
+        if not permitido:
             return {
                 "ok": False,
-                "error": "Permisos insuficientes para aprobar operaciones",
+                "error": motivo,
                 "codigo": "RBAC_DENY",
-                "rol_detectado": rol,
+                "rol_detectado": str((usuario_rbac or {}).get("rol") or x_usuario_rol or "operador").lower(),
             }
+
+        rol = str(usuario_rbac.get("rol") or "operador").lower()
+        aprobador = usuario_rbac.get("nombre") or payload.aprobada_por or "sistema"
 
         resultado = aprobar_operacion_supabase(
             id_operacion=payload.id_operacion,
-            usuario=payload.aprobada_por
+            usuario=aprobador
         )
 
         return {
@@ -947,6 +998,7 @@ async def aprobar_operacion(
             "mensaje": "Operación aprobada correctamente",
             "data": resultado,
             "rbac": {
+                "email": x_usuario_email,
                 "rol": rol,
                 "cliente": x_cliente_id,
                 "autorizado": True
