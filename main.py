@@ -1118,6 +1118,129 @@ async def login_usuario(payload: dict = Body(...)):
 async def endpoint_clientes():
     return obtener_clientes_supabase()
 
+# =========================================================
+# SAAS ADMIN - CREAR USUARIO
+# =========================================================
+
+@app.post("/argo/admin/crear_usuario")
+async def crear_usuario_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+
+    try:
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return {
+                "ok": False,
+                "error": motivo,
+                "codigo": "RBAC_DENY"
+            }
+
+        email = str(payload.get("email") or "").strip().lower()
+        password = str(payload.get("password") or "").strip()
+        nombre = str(payload.get("nombre") or "").strip()
+        rol = str(payload.get("rol") or "operador").strip().lower()
+        activo = bool(payload.get("activo", True))
+
+        if not email or not password or not nombre:
+            return {
+                "ok": False,
+                "error": "Datos incompletos"
+            }
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        cliente_usuario = payload.get("id_cliente")
+
+        # =========================================
+        # AISLAMIENTO TENANT
+        # =========================================
+
+        if rol_admin != "master_admin":
+            cliente_usuario = cliente_admin
+
+        # =========================================
+        # VALIDAR EXISTENCIA
+        # =========================================
+
+        url_check = f"{SUPABASE_URL}/rest/v1/argo_usuarios?email=eq.{email}&select=email"
+
+        response_check = requests.get(
+            url_check,
+            headers=_headers(),
+            timeout=30
+        )
+
+        if response_check.status_code != 200:
+            return {
+                "ok": False,
+                "error": "Error validando usuario"
+            }
+
+        existe = response_check.json()
+
+        if existe:
+            return {
+                "ok": False,
+                "error": "Usuario ya existe"
+            }
+
+        # =========================================
+        # CREAR USUARIO
+        # =========================================
+
+        nuevo_usuario = {
+            "email": email,
+            "password": hash_password(password),
+            "nombre": nombre,
+            "rol": rol,
+            "id_cliente": cliente_usuario,
+            "activo": activo,
+        }
+
+        url_insert = f"{SUPABASE_URL}/rest/v1/argo_usuarios"
+
+        headers = _headers()
+        headers["Prefer"] = "return=representation"
+
+        response_insert = requests.post(
+            url_insert,
+            headers=headers,
+            json=nuevo_usuario,
+            timeout=30
+        )
+
+        if response_insert.status_code not in [200, 201]:
+            return {
+                "ok": False,
+                "error": response_insert.text
+            }
+
+        creado = response_insert.json()
+
+        return {
+            "ok": True,
+            "mensaje": "Usuario creado correctamente",
+            "usuario": creado[0],
+            "rbac": {
+                "creado_por": x_usuario_email,
+                "rol_admin": rol_admin,
+                "tenant": cliente_usuario,
+            }
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(
