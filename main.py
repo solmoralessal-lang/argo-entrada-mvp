@@ -1086,7 +1086,7 @@ async def endpoint_dashboard(
                 "error": "cliente_id requerido"
             }
 
-        dashboard = obtener_dashboard_desde_historial(cliente_final)
+        dashboard = obtener_dashboard_supabase(cliente_final)
 
         return {
             "ok": True,
