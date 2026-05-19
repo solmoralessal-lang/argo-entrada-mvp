@@ -1241,7 +1241,88 @@ async def crear_usuario_admin(
             "ok": False,
             "error": str(e)
         }
+# =========================================================
+# SAAS ADMIN - LISTAR USUARIOS
+# =========================================================
 
+@app.get("/argo/admin/usuarios")
+async def listar_usuarios_admin(
+    cliente_id: str = None,
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+            cliente_id=cliente_id
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo
+                }
+            )
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        tenant_final = cliente_id or cliente_admin
+
+        # =========================================
+        # HARD TENANT ISOLATION
+        # =========================================
+
+        if rol_admin != "master_admin":
+            tenant_final = cliente_admin
+
+        url = (
+            f"{SUPABASE_URL}/rest/v1/argo_usuarios"
+            f"?id_cliente=eq.{tenant_final}"
+            f"&select=nombre,email,rol,activo,id_cliente"
+            f"&order=nombre.asc"
+        )
+
+        response = requests.get(
+            url,
+            headers=_headers(),
+            timeout=20
+        )
+
+        if response.status_code >= 300:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "ok": False,
+                    "error": "Error consultando usuarios",
+                    "detalle": response.text
+                }
+            )
+
+        usuarios = response.json()
+
+        return {
+            "ok": True,
+            "usuarios": usuarios,
+            "total": len(usuarios),
+            "tenant": tenant_final,
+            "audit": {
+                "consultado_por": x_usuario_email,
+                "rol_admin": rol_admin
+            }
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(
     cliente_id: str = Query(default=None),
