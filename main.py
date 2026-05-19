@@ -1244,7 +1244,44 @@ async def crear_usuario_admin(
 # =========================================================
 # SAAS ADMIN - LISTAR USUARIOS
 # =========================================================
+def actualizar_usuario_rbac(email: str, cambios: dict):
 
+    if not supabase_config_ok():
+        return {
+            "ok": False,
+            "error": "Supabase no configurado"
+        }
+
+    try:
+
+        url = (
+            f"{SUPABASE_URL}"
+            f"/rest/v1/argo_usuarios"
+            f"?email=eq.{email}"
+        )
+
+        resp = requests.patch(
+            url,
+            headers=_headers(),
+            json=cambios,
+            timeout=20
+        )
+
+        if resp.status_code not in [200, 204]:
+            return {
+                "ok": False,
+                "error": f"Error actualizando usuario: {resp.status_code} - {resp.text}"
+            }
+
+        return {
+            "ok": True
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 @app.get("/argo/admin/usuarios")
 async def listar_usuarios_admin(
     cliente_id: str = None,
@@ -1312,6 +1349,92 @@ async def listar_usuarios_admin(
             "audit": {
                 "consultado_por": x_usuario_email,
                 "rol_admin": rol_admin
+            }
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+# =========================================================
+# SAAS ADMIN - ACTIVAR / DESACTIVAR USUARIO
+# =========================================================
+
+@app.patch("/argo/admin/usuario/activo")
+async def cambiar_estado_usuario_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+
+        email_objetivo = str(payload.get("email") or "").strip().lower()
+        activo = bool(payload.get("activo"))
+
+        if not email_objetivo:
+            return {
+                "ok": False,
+                "error": "Email objetivo requerido"
+            }
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo
+                }
+            )
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        usuario_objetivo = obtener_usuario_rbac(email_objetivo)
+
+        if not usuario_objetivo:
+            return {
+                "ok": False,
+                "error": "Usuario objetivo no encontrado"
+            }
+
+        if rol_admin != "master_admin" and usuario_objetivo.get("id_cliente") != cliente_admin:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "No puedes modificar usuarios de otro tenant"
+                }
+            )
+
+        resultado = actualizar_usuario_rbac(
+            email=email_objetivo,
+            cambios={
+                "activo": activo
+            }
+        )
+
+        if not resultado.get("ok"):
+            return resultado
+
+        return {
+            "ok": True,
+            "mensaje": "Estado de usuario actualizado",
+            "usuario": {
+                "email": email_objetivo,
+                "activo": activo
+            },
+            "audit": {
+                "actualizado_por": x_usuario_email,
+                "rol_admin": rol_admin,
+                "tenant": usuario_objetivo.get("id_cliente")
             }
         }
 
