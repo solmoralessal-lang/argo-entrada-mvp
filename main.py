@@ -1446,6 +1446,198 @@ async def cambiar_estado_usuario_admin(
                 "error": str(e)
             }
         )
+# =========================================================
+# SAAS ADMIN - CAMBIAR ROL USUARIO
+# =========================================================
+
+@app.patch("/argo/admin/usuario/rol")
+async def cambiar_rol_usuario_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+
+        email_objetivo = str(payload.get("email") or "").strip().lower()
+        nuevo_rol = str(payload.get("rol") or "").strip().lower()
+
+        roles_validos = [
+            "operador",
+            "supervisor",
+            "admin_cliente",
+        ]
+
+        if nuevo_rol not in roles_validos:
+            return {
+                "ok": False,
+                "error": "Rol inválido"
+            }
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo
+                }
+            )
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        usuario_objetivo = obtener_usuario_rbac(email_objetivo)
+
+        if not usuario_objetivo:
+            return {
+                "ok": False,
+                "error": "Usuario objetivo no encontrado"
+            }
+
+        if (
+            rol_admin != "master_admin"
+            and usuario_objetivo.get("id_cliente") != cliente_admin
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "No puedes modificar usuarios de otro tenant"
+                }
+            )
+
+        resultado = actualizar_usuario_rbac(
+            email=email_objetivo,
+            cambios={
+                "rol": nuevo_rol
+            }
+        )
+
+        if not resultado.get("ok"):
+            return resultado
+
+        return {
+            "ok": True,
+            "mensaje": "Rol actualizado",
+            "usuario": {
+                "email": email_objetivo,
+                "rol": nuevo_rol
+            },
+            "audit": {
+                "accion": "CAMBIO_ROL_USUARIO",
+                "actualizado_por": x_usuario_email,
+                "rol_admin": rol_admin,
+                "tenant": cliente_admin,
+            }
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+# =========================================================
+# SAAS ADMIN - CAMBIAR ROL USUARIO
+# =========================================================
+
+@app.patch("/argo/admin/usuario/rol")
+async def cambiar_rol_usuario_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+
+        email_objetivo = str(payload.get("email") or "").strip().lower()
+        nuevo_rol = str(payload.get("rol") or "").strip().lower()
+
+        roles_validos = [
+            "operador",
+            "supervisor",
+            "admin_cliente",
+        ]
+
+        if nuevo_rol not in roles_validos:
+            return {
+                "ok": False,
+                "error": "Rol inválido"
+            }
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo
+                }
+            )
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        usuario_objetivo = obtener_usuario_rbac(email_objetivo)
+
+        if not usuario_objetivo:
+            return {
+                "ok": False,
+                "error": "Usuario objetivo no encontrado"
+            }
+
+        if (
+            rol_admin != "master_admin"
+            and usuario_objetivo.get("id_cliente") != cliente_admin
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "No puedes modificar usuarios de otro tenant"
+                }
+            )
+
+        resultado = actualizar_usuario_rbac(
+            email=email_objetivo,
+            cambios={
+                "rol": nuevo_rol
+            }
+        )
+
+        if not resultado.get("ok"):
+            return resultado
+
+        return {
+            "ok": True,
+            "mensaje": "Rol actualizado",
+            "usuario": {
+                "email": email_objetivo,
+                "rol": nuevo_rol
+            },
+            "audit": {
+                "accion": "CAMBIO_ROL_USUARIO",
+                "actualizado_por": x_usuario_email,
+                "rol_admin": rol_admin,
+                "tenant": cliente_admin,
+            }
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(
     cliente_id: str = Query(default=None),
