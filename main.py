@@ -7,6 +7,7 @@ import os
 import base64
 import hashlib
 from typing import Optional, List
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 import requests
 
@@ -33,6 +34,15 @@ from argo_historial import (
 from argo_models import AprobarOperacionRequest
 from argo_supabase_historial import aprobar_operacion_supabase
 from argo_dashboard_pro import construir_dashboard_pro, generar_pdf_dashboard_pro
+
+
+class ActualizarIncidenciaRequest(BaseModel):
+    id_operacion: str
+    estado_incidencia: str = "ABIERTA"
+    severidad: str = "MEDIA"
+    asignado_a: str = ""
+    comentario: str = ""
+
 
 app = FastAPI()
 
