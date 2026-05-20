@@ -276,32 +276,10 @@ async def actualizar_incidencia_dashboard_pro(
                 "id_operacion": payload.id_operacion,
             }
 
-        patch_url = (
-            f"{SUPABASE_URL}/rest/v1/argo_operaciones"
-            f"?id_operacion=eq.{payload.id_operacion}"
-        )
-
-        payload_update = {
-            "incidencia_estado": payload.estado_incidencia,
-            "incidencia_severidad": payload.severidad,
-            "incidencia_asignado_a": payload.asignado_a,
-            "incidencia_comentario": payload.comentario,
-            "incidencia_actualizada_por": actor_nombre,
-            "incidencia_fecha": datetime.utcnow().isoformat(),
-        }
-
-        response_patch = requests.patch(
-            patch_url,
-            headers=_headers(),
-            json=payload_update,
-            timeout=30
-        )
-
-        if response_patch.status_code not in [200, 204]:
-            raise RuntimeError(
-                f"Error actualizando incidencia: "
-                f"{response_patch.status_code} - {response_patch.text}"
-            )
+        # Nota enterprise:
+        # La tabla argo_operaciones aún no tiene columnas físicas de incidencia.
+        # Para evitar romper producción, registramos la gestión accionable en auditoría.
+        # En la fase de DB/migraciones se podrá persistir también en columnas dedicadas.
 
         guardar_auditoria_admin(
             accion="dashboard_pro_actualizar_incidencia",
