@@ -32,7 +32,7 @@ from argo_historial import (
 
 from argo_models import AprobarOperacionRequest
 from argo_supabase_historial import aprobar_operacion_supabase
-from argo_dashboard_pro import construir_dashboard_pro
+from argo_dashboard_pro import construir_dashboard_pro, generar_pdf_dashboard_pro
 
 app = FastAPI()
 
@@ -201,6 +201,38 @@ def argo_dashboard_pro(
 
     return construir_dashboard_pro(base, cliente_id=cliente_final)
 
+
+
+
+@app.get("/argo/dashboard/pro/pdf")
+def argo_dashboard_pro_pdf(
+    cliente_id: Optional[str] = Query(None),
+    x_cliente_id: Optional[str] = Header(None)
+):
+    cliente_final = cliente_id or x_cliente_id or "cliente_demo"
+
+    try:
+        try:
+            base = obtener_dashboard_supabase(cliente_id=cliente_final)
+        except TypeError:
+            base = obtener_dashboard_supabase(cliente_final)
+    except TypeError:
+        base = obtener_dashboard_supabase()
+
+    pro = construir_dashboard_pro(base, cliente_id=cliente_final)
+
+    safe_cliente = _safe_filename(cliente_final)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre_pdf = f"ARGO_DASHBOARD_PRO_{safe_cliente}_{timestamp}.pdf"
+    output_path = os.path.join("outputs", nombre_pdf)
+
+    generar_pdf_dashboard_pro(pro, output_path)
+
+    return FileResponse(
+        path=output_path,
+        filename=nombre_pdf,
+        media_type="application/pdf"
+    )
 
 @app.get("/argo/dashboard/pro/incidencias")
 def argo_dashboard_pro_incidencias(
