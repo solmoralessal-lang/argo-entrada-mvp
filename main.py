@@ -1542,6 +1542,104 @@ async def cambiar_rol_usuario_admin(
                 "error": str(e)
             }
         )
+
+# =========================================================
+# SAAS ADMIN - RESET PASSWORD USUARIO
+# =========================================================
+
+@app.patch("/argo/admin/usuario/reset_password")
+async def reset_password_usuario_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+
+        email_objetivo = str(payload.get("email") or "").strip().lower()
+        nuevo_password = str(payload.get("password") or "").strip()
+
+        if not email_objetivo or not nuevo_password:
+            return {
+                "ok": False,
+                "error": "Email y nuevo password son requeridos"
+            }
+
+        if len(nuevo_password) < 6:
+            return {
+                "ok": False,
+                "error": "El password debe tener al menos 6 caracteres"
+            }
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo
+                }
+            )
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        usuario_objetivo = obtener_usuario_rbac(email_objetivo)
+
+        if not usuario_objetivo:
+            return {
+                "ok": False,
+                "error": "Usuario objetivo no encontrado"
+            }
+
+        if (
+            rol_admin != "master_admin"
+            and usuario_objetivo.get("id_cliente") != cliente_admin
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "No puedes modificar usuarios de otro tenant"
+                }
+            )
+
+        resultado = actualizar_usuario_rbac(
+            email=email_objetivo,
+            cambios={
+                "password": hash_password(nuevo_password)
+            }
+        )
+
+        if not resultado.get("ok"):
+            return resultado
+
+        return {
+            "ok": True,
+            "mensaje": "Password actualizado correctamente",
+            "usuario": {
+                "email": email_objetivo
+            },
+            "audit": {
+                "accion": "RESET_PASSWORD_USUARIO",
+                "actualizado_por": x_usuario_email,
+                "rol_admin": rol_admin,
+                "tenant": usuario_objetivo.get("id_cliente")
+            }
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+
+
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(
     cliente_id: str = Query(default=None),
