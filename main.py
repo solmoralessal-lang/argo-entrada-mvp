@@ -251,7 +251,7 @@ async def actualizar_incidencia_dashboard_pro(
             raise RuntimeError("Supabase no configurado")
 
         url_select = (
-            f"{SUPABASE_URL}/rest/v1/argo_historial"
+            f"{SUPABASE_URL}/rest/v1/argo_operaciones"
             f"?id_operacion=eq.{payload.id_operacion}"
             f"&select=id_operacion"
         )
@@ -277,7 +277,7 @@ async def actualizar_incidencia_dashboard_pro(
             }
 
         patch_url = (
-            f"{SUPABASE_URL}/rest/v1/argo_historial"
+            f"{SUPABASE_URL}/rest/v1/argo_operaciones"
             f"?id_operacion=eq.{payload.id_operacion}"
         )
 
