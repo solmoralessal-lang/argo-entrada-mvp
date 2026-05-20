@@ -1244,6 +1244,47 @@ async def crear_usuario_admin(
 # =========================================================
 # SAAS ADMIN - LISTAR USUARIOS
 # =========================================================
+
+def guardar_auditoria_admin(
+    accion: str,
+    actor_email: str = None,
+    actor_rol: str = None,
+    tenant: str = None,
+    objetivo_email: str = None,
+    detalle: dict = None,
+):
+    try:
+        from datetime import datetime, timezone
+        import json
+        import os
+
+        os.makedirs("logs", exist_ok=True)
+
+        evento = {
+            "fecha": datetime.now(timezone.utc).isoformat(),
+            "accion": accion,
+            "actor_email": actor_email,
+            "actor_rol": actor_rol,
+            "tenant": tenant,
+            "objetivo_email": objetivo_email,
+            "detalle": detalle or {},
+        }
+
+        with open("logs/admin_audit.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(evento, ensure_ascii=False) + "\n")
+
+        return {
+            "ok": True,
+            "evento": evento
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
 def actualizar_usuario_rbac(email: str, cambios: dict):
 
     if not supabase_config_ok():
@@ -1424,6 +1465,17 @@ async def cambiar_estado_usuario_admin(
         if not resultado.get("ok"):
             return resultado
 
+        guardar_auditoria_admin(
+            accion="CAMBIO_ESTADO_USUARIO" if activo else "ELIMINAR_ACCESO_USUARIO",
+            actor_email=x_usuario_email,
+            actor_rol=rol_admin,
+            tenant=usuario_objetivo.get("id_cliente"),
+            objetivo_email=email_objetivo,
+            detalle={
+                "activo": activo
+            }
+        )
+
         return {
             "ok": True,
             "mensaje": "Estado de usuario actualizado",
@@ -1518,6 +1570,18 @@ async def cambiar_rol_usuario_admin(
 
         if not resultado.get("ok"):
             return resultado
+
+        guardar_auditoria_admin(
+            accion="CAMBIO_ROL_USUARIO",
+            actor_email=x_usuario_email,
+            actor_rol=rol_admin,
+            tenant=usuario_objetivo.get("id_cliente"),
+            objetivo_email=email_objetivo,
+            detalle={
+                "rol_anterior": usuario_objetivo.get("rol"),
+                "rol_nuevo": nuevo_rol
+            }
+        )
 
         return {
             "ok": True,
@@ -1616,6 +1680,17 @@ async def reset_password_usuario_admin(
         if not resultado.get("ok"):
             return resultado
 
+        guardar_auditoria_admin(
+            accion="RESET_PASSWORD_USUARIO",
+            actor_email=x_usuario_email,
+            actor_rol=rol_admin,
+            tenant=usuario_objetivo.get("id_cliente"),
+            objetivo_email=email_objetivo,
+            detalle={
+                "password_reseteado": True
+            }
+        )
+
         return {
             "ok": True,
             "mensaje": "Password actualizado correctamente",
@@ -1628,6 +1703,77 @@ async def reset_password_usuario_admin(
                 "rol_admin": rol_admin,
                 "tenant": usuario_objetivo.get("id_cliente")
             }
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+
+
+
+# =========================================================
+# SAAS ADMIN - CONSULTAR AUDITORIA ADMIN
+# =========================================================
+
+@app.get("/argo/admin/auditoria")
+async def consultar_auditoria_admin(
+    limit: int = 50,
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo
+                }
+            )
+
+        import json
+        import os
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        tenant_admin = usuario_admin.get("id_cliente")
+
+        path_logs = "logs/admin_audit.jsonl"
+
+        if not os.path.exists(path_logs):
+            return {
+                "ok": True,
+                "logs": [],
+                "total": 0,
+                "tenant": tenant_admin
+            }
+
+        eventos = []
+
+        with open(path_logs, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    evento = json.loads(line.strip())
+                    if rol_admin == "master_admin" or evento.get("tenant") == tenant_admin:
+                        eventos.append(evento)
+                except Exception:
+                    continue
+
+        eventos = list(reversed(eventos))[: max(1, min(limit, 200))]
+
+        return {
+            "ok": True,
+            "logs": eventos,
+            "total": len(eventos),
+            "tenant": tenant_admin
         }
 
     except Exception as e:
