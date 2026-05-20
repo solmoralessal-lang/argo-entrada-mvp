@@ -32,6 +32,7 @@ from argo_historial import (
 
 from argo_models import AprobarOperacionRequest
 from argo_supabase_historial import aprobar_operacion_supabase
+from argo_dashboard_pro import construir_dashboard_pro
 
 app = FastAPI()
 
@@ -182,6 +183,72 @@ if not os.path.exists(OUTPUT_FOLDER):
 @app.get("/health")
 def health():
     return {"mensaje": "ARGO ENTRADA MVP funcionando"}
+
+@app.get("/argo/dashboard/pro")
+def argo_dashboard_pro(
+    cliente_id: Optional[str] = Query(None),
+    x_cliente_id: Optional[str] = Header(None)
+):
+    cliente_final = cliente_id or x_cliente_id
+
+    try:
+        try:
+            base = obtener_dashboard_supabase(cliente_id=cliente_final)
+        except TypeError:
+            base = obtener_dashboard_supabase(cliente_final)
+    except TypeError:
+        base = obtener_dashboard_supabase()
+
+    return construir_dashboard_pro(base, cliente_id=cliente_final)
+
+
+@app.get("/argo/dashboard/pro/incidencias")
+def argo_dashboard_pro_incidencias(
+    cliente_id: Optional[str] = Query(None),
+    x_cliente_id: Optional[str] = Header(None)
+):
+    cliente_final = cliente_id or x_cliente_id
+
+    try:
+        try:
+            base = obtener_dashboard_supabase(cliente_id=cliente_final)
+        except TypeError:
+            base = obtener_dashboard_supabase(cliente_final)
+    except TypeError:
+        base = obtener_dashboard_supabase()
+
+    pro = construir_dashboard_pro(base, cliente_id=cliente_final)
+    return {
+        "ok": True,
+        "cliente_id": cliente_final,
+        "incidencias_criticas": pro.get("incidencias_criticas", []),
+        "alertas_inteligentes": pro.get("alertas_inteligentes", []),
+        "total_incidencias": len(pro.get("incidencias_criticas", [])),
+        "total_alertas": len(pro.get("alertas_inteligentes", [])),
+    }
+
+
+@app.get("/argo/dashboard/pro/timeline")
+def argo_dashboard_pro_timeline(
+    cliente_id: Optional[str] = Query(None),
+    x_cliente_id: Optional[str] = Header(None)
+):
+    cliente_final = cliente_id or x_cliente_id
+
+    try:
+        try:
+            base = obtener_dashboard_supabase(cliente_id=cliente_final)
+        except TypeError:
+            base = obtener_dashboard_supabase(cliente_final)
+    except TypeError:
+        base = obtener_dashboard_supabase()
+
+    pro = construir_dashboard_pro(base, cliente_id=cliente_final)
+    return {
+        "ok": True,
+        "cliente_id": cliente_final,
+        "timeline_vivo": pro.get("timeline_vivo", []),
+    }
 
 @app.get("/descargar/{nombre_archivo}")
 def descargar_archivo(nombre_archivo: str):
@@ -2626,3 +2693,4 @@ async def procesar_desde_ocr(
         }
 
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
+
