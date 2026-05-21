@@ -1271,6 +1271,40 @@ def verify_password(password_plano: str, password_guardado: str) -> bool:
         return False
 
 
+
+
+def obtener_modulos_por_rol(rol: str) -> list:
+    rol = str(rol or "operador").lower()
+
+    base = ["entrada_documental"]
+
+    if rol in {"operador"}:
+        return base + ["camara_pro"]
+
+    if rol in {"supervisor"}:
+        return base + [
+            "camara_pro",
+            "aprobaciones",
+            "dashboard",
+            "analytics_pro",
+            "reportes",
+        ]
+
+    if rol in {"admin", "admin_cliente", "master_admin"}:
+        return base + [
+            "camara_pro",
+            "aprobaciones",
+            "dashboard",
+            "analytics_pro",
+            "reportes",
+            "admin_saas",
+            "auditoria",
+            "incidencias",
+        ]
+
+    return base
+
+
 @app.post("/argo/login")
 async def login_usuario(payload: dict = Body(...)):
     
@@ -1321,7 +1355,8 @@ async def login_usuario(payload: dict = Body(...)):
             "email": user["email"],
             "nombre": user["nombre"],
             "id_cliente": user["id_cliente"],
-            "rol": user["rol"]
+            "rol": user["rol"],
+            "modulos": obtener_modulos_por_rol(user.get("rol"))
         }
     }
 
