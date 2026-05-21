@@ -1931,6 +1931,129 @@ async def reset_password_usuario_admin(
 # SAAS ADMIN - CONSULTAR AUDITORIA ADMIN
 # =========================================================
 
+
+
+# =========================================================
+# ENTERPRISE ACTIVITY FEED / AUDITORIA AVANZADA
+# =========================================================
+
+@app.get("/argo/admin/activity_feed")
+async def activity_feed_enterprise(
+    limit: int = 100,
+    accion: str = None,
+    actor_email: str = None,
+    tenant: str = None,
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo,
+                    "codigo": "RBAC_DENY"
+                }
+            )
+
+        import json
+        import os
+        from collections import Counter
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        tenant_admin = usuario_admin.get("id_cliente")
+
+        tenant_final = tenant or tenant_admin
+
+        path_logs = "logs/admin_audit.jsonl"
+
+        if not os.path.exists(path_logs):
+            return {
+                "ok": True,
+                "logs": [],
+                "resumen": {},
+                "total": 0,
+                "tenant": tenant_final,
+            }
+
+        logs = []
+
+        with open(path_logs, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    evento = json.loads(line.strip())
+                except Exception:
+                    continue
+
+                evento_tenant = evento.get("tenant")
+
+                if rol_admin != "master_admin":
+                    if evento_tenant != tenant_admin:
+                        continue
+                elif tenant_final:
+                    if evento_tenant != tenant_final:
+                        continue
+
+                if accion and evento.get("accion") != accion:
+                    continue
+
+                if actor_email and evento.get("actor_email") != actor_email:
+                    continue
+
+                detalle = evento.get("detalle") or {}
+
+                logs.append({
+                    "fecha": evento.get("fecha"),
+                    "accion": evento.get("accion"),
+                    "actor_email": evento.get("actor_email"),
+                    "actor_rol": evento.get("actor_rol"),
+                    "tenant": evento.get("tenant"),
+                    "objetivo_email": evento.get("objetivo_email"),
+                    "detalle": detalle,
+                    "id_operacion": detalle.get("id_operacion"),
+                    "severidad": detalle.get("severidad"),
+                    "estado_incidencia": detalle.get("estado_incidencia"),
+                    "modulo": (
+                        "DASHBOARD_PRO"
+                        if str(evento.get("accion") or "").startswith("dashboard_pro")
+                        else "ADMIN"
+                    ),
+                })
+
+        logs = sorted(logs, key=lambda x: x.get("fecha") or "", reverse=True)
+
+        acciones = Counter([x.get("accion") or "SIN_ACCION" for x in logs])
+        modulos = Counter([x.get("modulo") or "SIN_MODULO" for x in logs])
+        actores = Counter([x.get("actor_email") or "SIN_ACTOR" for x in logs])
+
+        return {
+            "ok": True,
+            "tenant": tenant_final,
+            "total": len(logs),
+            "logs": logs[: max(1, min(limit, 500))],
+            "resumen": {
+                "acciones": dict(acciones),
+                "modulos": dict(modulos),
+                "actores": dict(actores),
+            }
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e),
+                "modulo": "activity_feed_enterprise"
+            }
+        )
+
+
 @app.get("/argo/admin/auditoria")
 async def consultar_auditoria_admin(
     limit: int = 50,
