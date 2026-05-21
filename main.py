@@ -1273,6 +1273,85 @@ def verify_password(password_plano: str, password_guardado: str) -> bool:
 
 
 
+
+PLANES_SAAS = {
+    "BASIC": {
+        "nombre": "Basic",
+        "modulos": ["entrada_documental", "camara_pro"],
+        "limites": {
+            "operaciones_mes": 250,
+            "usuarios": 3,
+            "clientes_tenant": 1,
+            "export_pdf": False,
+            "dashboard_pro": False,
+        },
+    },
+    "PRO": {
+        "nombre": "PRO",
+        "modulos": [
+            "entrada_documental",
+            "camara_pro",
+            "aprobaciones",
+            "dashboard",
+            "analytics_pro",
+            "reportes",
+        ],
+        "limites": {
+            "operaciones_mes": 1500,
+            "usuarios": 15,
+            "clientes_tenant": 3,
+            "export_pdf": True,
+            "dashboard_pro": True,
+        },
+    },
+    "ENTERPRISE": {
+        "nombre": "Enterprise",
+        "modulos": [
+            "entrada_documental",
+            "camara_pro",
+            "aprobaciones",
+            "dashboard",
+            "analytics_pro",
+            "reportes",
+            "admin_saas",
+            "auditoria",
+            "incidencias",
+        ],
+        "limites": {
+            "operaciones_mes": None,
+            "usuarios": None,
+            "clientes_tenant": None,
+            "export_pdf": True,
+            "dashboard_pro": True,
+        },
+    },
+}
+
+
+def normalizar_plan(plan: str) -> str:
+    plan = str(plan or "ENTERPRISE").strip().upper()
+    if plan not in PLANES_SAAS:
+        return "ENTERPRISE"
+    return plan
+
+
+def obtener_plan_saas(user: dict) -> dict:
+    plan_code = normalizar_plan(
+        user.get("plan")
+        or user.get("plan_saas")
+        or user.get("tipo_plan")
+        or "ENTERPRISE"
+    )
+
+    config = PLANES_SAAS[plan_code]
+
+    return {
+        "codigo": plan_code,
+        "nombre": config["nombre"],
+        "limites": config["limites"],
+    }
+
+
 def obtener_modulos_por_rol(rol: str) -> list:
     rol = str(rol or "operador").lower()
 
@@ -1303,6 +1382,18 @@ def obtener_modulos_por_rol(rol: str) -> list:
         ]
 
     return base
+
+
+def obtener_modulos_por_plan_y_rol(user: dict) -> list:
+    rol = str(user.get("rol") or "operador").lower()
+    plan = obtener_plan_saas(user)
+    modulos_rol = set(obtener_modulos_por_rol(rol))
+    modulos_plan = set(PLANES_SAAS[plan["codigo"]]["modulos"])
+
+    if rol == "master_admin":
+        return sorted(modulos_rol)
+
+    return sorted(modulos_rol.intersection(modulos_plan))
 
 
 @app.post("/argo/login")
@@ -1356,7 +1447,9 @@ async def login_usuario(payload: dict = Body(...)):
             "nombre": user["nombre"],
             "id_cliente": user["id_cliente"],
             "rol": user["rol"],
-            "modulos": obtener_modulos_por_rol(user.get("rol"))
+            "plan": obtener_plan_saas(user),
+            "limites": obtener_plan_saas(user).get("limites"),
+            "modulos": obtener_modulos_por_plan_y_rol(user)
         }
     }
 
