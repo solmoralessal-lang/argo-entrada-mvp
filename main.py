@@ -1396,6 +1396,101 @@ def obtener_modulos_por_plan_y_rol(user: dict) -> list:
     return sorted(modulos_rol.intersection(modulos_plan))
 
 
+
+# =========================================================
+# SAAS LIMIT ENFORCEMENT
+# =========================================================
+
+def contar_operaciones_mes(cliente_id: str) -> int:
+    try:
+
+        if not cliente_id:
+            return 0
+
+        inicio_mes = datetime.now().strftime("%Y-%m-01")
+
+        url = (
+            f"{SUPABASE_URL}/rest/v1/argo_operaciones"
+            f"?id_cliente=eq.{cliente_id}"
+            f"&fecha=gte.{inicio_mes}"
+            f"&select=id_operacion"
+        )
+
+        response = requests.get(
+            url,
+            headers=_headers(),
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            return 0
+
+        data = response.json()
+
+        return len(data)
+
+    except Exception:
+        return 0
+
+
+def validar_limite_operaciones_plan(usuario: dict):
+
+    try:
+
+        plan = obtener_plan_saas(usuario)
+
+        limite = (
+            plan.get("limites", {})
+            .get("operaciones_mes")
+        )
+
+        if limite is None:
+            return {
+                "ok": True
+            }
+
+        cliente_id = usuario.get("id_cliente")
+
+        usadas = contar_operaciones_mes(cliente_id)
+
+        if usadas >= limite:
+
+            guardar_auditoria_admin(
+                accion="LIMITE_SAAS_OPERACIONES_EXCEDIDO",
+                actor_email=usuario.get("email"),
+                actor_rol=usuario.get("rol"),
+                tenant=cliente_id,
+                detalle={
+                    "plan": plan.get("codigo"),
+                    "limite": limite,
+                    "usadas": usadas,
+                }
+            )
+
+            return {
+                "ok": False,
+                "error": "Límite mensual de operaciones alcanzado",
+                "codigo": "SAAS_LIMIT_REACHED",
+                "plan": plan.get("codigo"),
+                "limite": limite,
+                "usadas": usadas,
+            }
+
+        return {
+            "ok": True,
+            "plan": plan.get("codigo"),
+            "limite": limite,
+            "usadas": usadas,
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
+
+
+
 @app.post("/argo/login")
 async def login_usuario(payload: dict = Body(...)):
     
@@ -3133,10 +3228,27 @@ async def argo_generar_desde_ocr(payload: dict = Body(...)):
 
 @app.post("/argo/procesar_desde_ocr")
 async def procesar_desde_ocr(
+    request: Request,
     payload: dict,
     x_cliente_id: str = Header(default=None)
 ):
     try:
+
+        x_usuario_email = request.headers.get("x-usuario-email")
+
+        usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+        if usuario_actual:
+
+            validacion_plan = validar_limite_operaciones_plan(usuario_actual)
+
+            if not validacion_plan.get("ok"):
+
+                return JSONResponse(
+                    status_code=403,
+                    content=validacion_plan
+                )
+
         ocr = payload or {}
         consolidado = ocr.get("consolidado", {}) or {}
 
