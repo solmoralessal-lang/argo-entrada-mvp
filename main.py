@@ -1837,6 +1837,82 @@ async def cambiar_estado_usuario_admin(
                 "error": str(e)
             }
         )
+
+# =========================================================
+# SAAS ADMIN - ELIMINAR ACCESO ENTERPRISE
+# =========================================================
+
+@app.patch("/argo/admin/usuario/eliminar_acceso")
+async def eliminar_acceso_usuario_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+        email_objetivo = str(payload.get("email") or "").strip().lower()
+
+        if not email_objetivo:
+            return {"ok": False, "error": "Email requerido"}
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return {"ok": False, "error": motivo}
+
+        usuario_objetivo = obtener_usuario_rbac(email_objetivo)
+
+        if not usuario_objetivo:
+            return {"ok": False, "error": "Usuario objetivo no encontrado"}
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        if rol_admin != "master_admin" and usuario_objetivo.get("id_cliente") != cliente_admin:
+            return {"ok": False, "error": "Acceso denegado por aislamiento tenant"}
+
+        if email_objetivo == str(x_usuario_email or "").strip().lower():
+            return {"ok": False, "error": "No puedes eliminar tu propio acceso"}
+
+        resultado = actualizar_usuario_rbac(
+            email=email_objetivo,
+            cambios={
+                "activo": False,
+                "rol": "operador",
+            }
+        )
+
+        if not resultado.get("ok"):
+            return resultado
+
+        guardar_auditoria_admin(
+            accion="ELIMINAR_ACCESO_ENTERPRISE",
+            actor_email=x_usuario_email,
+            actor_rol=rol_admin,
+            tenant=usuario_objetivo.get("id_cliente"),
+            objetivo_email=email_objetivo,
+            detalle={
+                "activo": False,
+                "rol_anterior": usuario_objetivo.get("rol"),
+                "rol_nuevo": "operador",
+                "motivo": "Acceso enterprise eliminado por administrador",
+            }
+        )
+
+        return {
+            "ok": True,
+            "mensaje": "Acceso eliminado correctamente",
+            "email": email_objetivo,
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e)}
+        )
+
+
 # =========================================================
 # SAAS ADMIN - CAMBIAR ROL USUARIO
 # =========================================================
