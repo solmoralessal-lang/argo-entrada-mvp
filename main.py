@@ -1699,7 +1699,7 @@ async def listar_usuarios_admin(
         url = (
             f"{SUPABASE_URL}/rest/v1/argo_usuarios"
             f"?id_cliente=eq.{tenant_final}"
-            f"&select=nombre,email,rol,activo,id_cliente"
+            f"&select=nombre,email,rol,activo,id_cliente,plan_saas"
             f"&order=nombre.asc"
         )
 
@@ -1945,6 +1945,122 @@ async def cambiar_rol_usuario_admin(
                 "error": str(e)
             }
         )
+
+
+
+# =========================================================
+# SAAS ADMIN - CAMBIAR PLAN SAAS USUARIO/TENANT
+# =========================================================
+
+@app.patch("/argo/admin/usuario/plan")
+async def cambiar_plan_usuario_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+        email_objetivo = str(payload.get("email") or "").strip().lower()
+        nuevo_plan = normalizar_plan(payload.get("plan_saas") or payload.get("plan") or "")
+
+        if not email_objetivo:
+            return {
+                "ok": False,
+                "error": "Email requerido"
+            }
+
+        if nuevo_plan not in PLANES_SAAS:
+            return {
+                "ok": False,
+                "error": "Plan inválido"
+            }
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_ADMIN_CLIENTES,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo,
+                    "codigo": "RBAC_DENY"
+                }
+            )
+
+        rol_admin = str(usuario_admin.get("rol") or "").lower()
+        cliente_admin = usuario_admin.get("id_cliente")
+
+        usuario_objetivo = obtener_usuario_rbac(email_objetivo)
+
+        if not usuario_objetivo:
+            return {
+                "ok": False,
+                "error": "Usuario objetivo no encontrado"
+            }
+
+        if (
+            rol_admin != "master_admin"
+            and usuario_objetivo.get("id_cliente") != cliente_admin
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "No puedes modificar usuarios de otro tenant",
+                    "codigo": "TENANT_DENY"
+                }
+            )
+
+        plan_anterior = (
+            usuario_objetivo.get("plan_saas")
+            or usuario_objetivo.get("plan")
+            or usuario_objetivo.get("tipo_plan")
+            or "ENTERPRISE"
+        )
+
+        resultado = actualizar_usuario_rbac(
+            email_objetivo,
+            {
+                "plan_saas": nuevo_plan
+            }
+        )
+
+        if not resultado.get("ok"):
+            return resultado
+
+        guardar_auditoria_admin(
+            accion="cambiar_plan_saas_usuario",
+            actor_email=x_usuario_email,
+            actor_rol=rol_admin,
+            tenant=usuario_objetivo.get("id_cliente"),
+            objetivo_email=email_objetivo,
+            detalle={
+                "plan_anterior": plan_anterior,
+                "plan_nuevo": nuevo_plan,
+                "modulos_plan": PLANES_SAAS[nuevo_plan]["modulos"],
+                "limites": PLANES_SAAS[nuevo_plan]["limites"],
+            }
+        )
+
+        return {
+            "ok": True,
+            "mensaje": "Plan SaaS actualizado correctamente",
+            "email": email_objetivo,
+            "plan_anterior": plan_anterior,
+            "plan_saas": nuevo_plan,
+            "plan": PLANES_SAAS[nuevo_plan],
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+
 
 # =========================================================
 # SAAS ADMIN - RESET PASSWORD USUARIO
