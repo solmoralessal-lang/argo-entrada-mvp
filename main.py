@@ -1279,7 +1279,7 @@ PLANES_SAAS = {
         "nombre": "Basic",
         "modulos": ["entrada_documental", "camara_pro"],
         "limites": {
-            "operaciones_mes": 250,
+            "operaciones_mes": 1,
             "usuarios": 3,
             "clientes_tenant": 1,
             "export_pdf": False,
