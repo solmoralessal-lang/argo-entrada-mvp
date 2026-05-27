@@ -1138,7 +1138,7 @@ def obtener_usuario_rbac(email: str):
     if not supabase_config_ok():
         raise RuntimeError("Supabase no configurado")
 
-    url = f"{SUPABASE_URL}/rest/v1/argo_usuarios?email=eq.{email}&select=email,nombre,id_cliente,rol,activo"
+    url = f"{SUPABASE_URL}/rest/v1/argo_usuarios?email=eq.{email}&select=email,nombre,id_cliente,rol,activo,plan_saas"
 
     response = requests.get(url, headers=_headers(), timeout=30)
 
