@@ -1462,6 +1462,15 @@ def validar_limite_operaciones_plan(usuario: dict):
 
         usadas = contar_operaciones_mes(cliente_id)
 
+        print("DEBUG_SAAS_LIMIT", {
+            "email": usuario.get("email"),
+            "rol": usuario.get("rol"),
+            "cliente_id": cliente_id,
+            "plan": plan.get("codigo"),
+            "limite": limite,
+            "usadas": usadas,
+        })
+
         if usadas >= limite:
 
             guardar_auditoria_admin(
@@ -1490,6 +1499,11 @@ def validar_limite_operaciones_plan(usuario: dict):
             "plan": plan.get("codigo"),
             "limite": limite,
             "usadas": usadas,
+            "debug_saas": {
+                "cliente_id": cliente_id,
+                "email": usuario.get("email"),
+                "rol": usuario.get("rol"),
+            }
         }
 
     except Exception as e:
