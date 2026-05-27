@@ -1412,8 +1412,8 @@ def contar_operaciones_mes(cliente_id: str) -> int:
         url = (
             f"{SUPABASE_URL}/rest/v1/argo_operaciones"
             f"?id_cliente=eq.{cliente_id}"
-            f"&fecha_creacion=gte.{inicio_mes}"
-            f"&select=id_operacion,fecha_creacion"
+            f"&fecha=gte.{inicio_mes}"
+            f"&select=id_operacion,fecha"
         )
 
         response = requests.get(
