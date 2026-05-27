@@ -1442,6 +1442,52 @@ def contar_operaciones_mes(cliente_id: str) -> int:
         return 0
 
 
+
+def validar_feature_plan(usuario: dict, feature: str):
+    try:
+        plan = obtener_plan_saas(usuario)
+        codigo = plan.get("codigo")
+        limites = PLANES_SAAS.get(codigo, {}).get("limites", {})
+
+        if feature == "export_pdf":
+            permitido = limites.get("export_pdf") is True
+        elif feature == "dashboard_pro":
+            permitido = limites.get("dashboard_pro") is True
+        else:
+            permitido = False
+
+        if not permitido:
+            guardar_auditoria_admin(
+                accion="FEATURE_BLOCKED_BY_PLAN",
+                actor_email=usuario.get("email"),
+                actor_rol=usuario.get("rol"),
+                tenant=usuario.get("id_cliente"),
+                detalle={
+                    "feature": feature,
+                    "plan": codigo,
+                }
+            )
+
+            return {
+                "ok": False,
+                "error": "Función no disponible para tu plan SaaS",
+                "codigo": "FEATURE_BLOCKED",
+                "feature": feature,
+                "plan": codigo,
+            }
+
+        return {"ok": True, "feature": feature, "plan": codigo}
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "codigo": "FEATURE_VALIDATION_ERROR",
+            "feature": feature,
+        }
+
+
+
 def validar_limite_operaciones_plan(usuario: dict):
 
     try:
@@ -3359,6 +3405,15 @@ async def procesar_desde_ocr(
             "certeza_final_pct": class_riesgo.get("certeza_final_pct") or ocr.get("certeza_final_pct") or 0,
             "nivel_debida_diligencia": class_score.get("nivel_debida_diligencia") or ocr.get("nivel_debida_diligencia") or "PENDIENTE ARGO CLASS",
         }
+        if usuario_actual:
+            validacion_pdf = validar_feature_plan(usuario_actual, "export_pdf")
+
+            if not validacion_pdf.get("ok"):
+                return JSONResponse(
+                    status_code=403,
+                    content=validacion_pdf
+                )
+
         ruta_reporte = generar_reporte_ejecutivo(
             "PLANTILLA_OFICIAL_ARGO_DOCUMENT_MEJORADA_v2026.xlsx",
             data_reporte,
