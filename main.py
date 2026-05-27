@@ -1411,8 +1411,8 @@ def contar_operaciones_mes(cliente_id: str) -> int:
 
         url = (
             f"{SUPABASE_URL}/rest/v1/argo_operaciones"
-            f"?id_cliente=eq.{cliente_id}"
-            f"&select=id_operacion,fecha"
+            f"?cliente_id=eq.{cliente_id}"
+            f"&select=id_operacion,created_at,timestamp_local,cliente_id"
         )
 
         response = requests.get(
@@ -1430,7 +1430,7 @@ def contar_operaciones_mes(cliente_id: str) -> int:
 
         for row in data:
 
-            fecha = str(row.get("fecha") or "")
+            fecha = str(row.get("created_at") or row.get("timestamp_local") or "")
 
             if fecha.startswith(mes_actual):
                 total += 1
