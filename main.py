@@ -196,9 +196,28 @@ def health():
 
 @app.get("/argo/dashboard/pro")
 def argo_dashboard_pro(
+    request: Request,
     cliente_id: Optional[str] = Query(None),
     x_cliente_id: Optional[str] = Header(None)
 ):
+
+    x_usuario_email = request.headers.get("x-usuario-email")
+
+    usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+    if usuario_actual:
+
+        feature = validar_feature_plan(
+            usuario_actual,
+            "dashboard_pro"
+        )
+
+        if not feature.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=feature
+            )
+
     cliente_final = cliente_id or x_cliente_id
 
     try:
@@ -318,9 +337,27 @@ async def actualizar_incidencia_dashboard_pro(
 
 @app.get("/argo/dashboard/pro/incidencias")
 def argo_dashboard_pro_incidencias(
+    request: Request,
     cliente_id: Optional[str] = Query(None),
     x_cliente_id: Optional[str] = Header(None)
 ):
+
+    x_usuario_email = request.headers.get("x-usuario-email")
+
+    usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+    if usuario_actual:
+
+        feature = validar_feature_plan(
+            usuario_actual,
+            "dashboard_pro"
+        )
+
+        if not feature.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=feature
+            )
     cliente_final = cliente_id or x_cliente_id
 
     try:
@@ -344,9 +381,27 @@ def argo_dashboard_pro_incidencias(
 
 @app.get("/argo/dashboard/pro/timeline")
 def argo_dashboard_pro_timeline(
+    request: Request,
     cliente_id: Optional[str] = Query(None),
     x_cliente_id: Optional[str] = Header(None)
 ):
+
+    x_usuario_email = request.headers.get("x-usuario-email")
+
+    usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+    if usuario_actual:
+
+        feature = validar_feature_plan(
+            usuario_actual,
+            "dashboard_pro"
+        )
+
+        if not feature.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=feature
+            )
     cliente_final = cliente_id or x_cliente_id
 
     try:
@@ -366,9 +421,38 @@ def argo_dashboard_pro_timeline(
 
 @app.get("/argo/dashboard/pro/pdf")
 def argo_dashboard_pro_pdf(
+    request: Request,
     cliente_id: Optional[str] = Query(None),
     x_cliente_id: Optional[str] = Header(None)
 ):
+
+    x_usuario_email = request.headers.get("x-usuario-email")
+
+    usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+    if usuario_actual:
+
+        feature_pdf = validar_feature_plan(
+            usuario_actual,
+            "export_pdf"
+        )
+
+        if not feature_pdf.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=feature_pdf
+            )
+
+        feature_dashboard = validar_feature_plan(
+            usuario_actual,
+            "dashboard_pro"
+        )
+
+        if not feature_dashboard.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=feature_dashboard
+            )
     cliente_final = cliente_id or x_cliente_id or "cliente_demo"
 
     try:
