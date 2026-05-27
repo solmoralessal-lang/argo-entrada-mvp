@@ -3267,6 +3267,8 @@ async def procesar_desde_ocr(
 
         usuario_actual = obtener_usuario_rbac(x_usuario_email)
 
+        print("DEBUG_USUARIO_ACTUAL =", usuario_actual)
+
         if usuario_actual:
 
             validacion_plan = validar_limite_operaciones_plan(usuario_actual)
