@@ -3260,7 +3260,11 @@ async def procesar_desde_ocr(
         tracking = consolidado.get("tracking") or generar_id_operacion()
         id_operacion = generar_id_operacion()
 
-        cliente_id = x_cliente_id or payload.get("cliente_id")
+        cliente_id = (
+            usuario_actual.get("id_cliente")
+            if usuario_actual
+            else (x_cliente_id or payload.get("cliente_id"))
+        )
 
         if not cliente_id:
             return {
