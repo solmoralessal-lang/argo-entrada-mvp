@@ -1462,6 +1462,12 @@ def validar_limite_operaciones_plan(usuario: dict):
 
         usadas = contar_operaciones_mes(cliente_id)
 
+        print("SAAS_COUNTER_DEBUG")
+        print("cliente_id =", cliente_id)
+        print("plan =", plan.get("codigo"))
+        print("limite =", limite)
+        print("usadas =", usadas)
+
         print("DEBUG_SAAS_LIMIT", {
             "email": usuario.get("email"),
             "rol": usuario.get("rol"),
