@@ -1279,7 +1279,7 @@ PLANES_SAAS = {
         "nombre": "Basic",
         "modulos": ["entrada_documental", "camara_pro"],
         "limites": {
-            "operaciones_mes": 1,
+            "operaciones_mes": 250,
             "usuarios": 3,
             "clientes_tenant": 1,
             "export_pdf": False,
@@ -1461,21 +1461,6 @@ def validar_limite_operaciones_plan(usuario: dict):
         cliente_id = usuario.get("id_cliente")
 
         usadas = contar_operaciones_mes(cliente_id)
-
-        print("SAAS_COUNTER_DEBUG")
-        print("cliente_id =", cliente_id)
-        print("plan =", plan.get("codigo"))
-        print("limite =", limite)
-        print("usadas =", usadas)
-
-        print("DEBUG_SAAS_LIMIT", {
-            "email": usuario.get("email"),
-            "rol": usuario.get("rol"),
-            "cliente_id": cliente_id,
-            "plan": plan.get("codigo"),
-            "limite": limite,
-            "usadas": usadas,
-        })
 
         if usadas >= limite:
 
@@ -3267,13 +3252,9 @@ async def procesar_desde_ocr(
 
         usuario_actual = obtener_usuario_rbac(x_usuario_email)
 
-        print("DEBUG_USUARIO_ACTUAL =", usuario_actual)
-
         if usuario_actual:
 
             validacion_plan = validar_limite_operaciones_plan(usuario_actual)
-
-            print("DEBUG_VALIDACION_PLAN =", validacion_plan)
 
             if not validacion_plan.get("ok"):
 
