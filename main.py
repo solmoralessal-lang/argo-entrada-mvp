@@ -1407,12 +1407,11 @@ def contar_operaciones_mes(cliente_id: str) -> int:
         if not cliente_id:
             return 0
 
-        inicio_mes = datetime.now().strftime("%Y-%m-01")
+        mes_actual = datetime.now().strftime("%Y-%m")
 
         url = (
             f"{SUPABASE_URL}/rest/v1/argo_operaciones"
             f"?id_cliente=eq.{cliente_id}"
-            f"&fecha=gte.{inicio_mes}"
             f"&select=id_operacion,fecha"
         )
 
@@ -1427,9 +1426,19 @@ def contar_operaciones_mes(cliente_id: str) -> int:
 
         data = response.json()
 
-        return len(data)
+        total = 0
 
-    except Exception:
+        for row in data:
+
+            fecha = str(row.get("fecha") or "")
+
+            if fecha.startswith(mes_actual):
+                total += 1
+
+        return total
+
+    except Exception as e:
+        print("ERROR CONTANDO OPERACIONES:", str(e))
         return 0
 
 
