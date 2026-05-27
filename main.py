@@ -3269,14 +3269,16 @@ async def procesar_desde_ocr(
 
         if usuario_actual:
 
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "ok": False,
-                    "debug": "BLOQUEO_FORZADO_OK",
-                    "email": x_usuario_email,
-                }
-            )
+            validacion_plan = validar_limite_operaciones_plan(usuario_actual)
+
+            print("DEBUG_VALIDACION_PLAN =", validacion_plan)
+
+            if not validacion_plan.get("ok"):
+
+                return JSONResponse(
+                    status_code=403,
+                    content=validacion_plan
+                )
 
         ocr = payload or {}
         consolidado = ocr.get("consolidado", {}) or {}
