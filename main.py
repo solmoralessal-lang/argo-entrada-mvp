@@ -25,7 +25,6 @@ from argo_control import argo_control_validar_v2
 from argo_historial import (
     normalizar_operacion_para_historial,
     guardar_operacion_historial,
-    cargar_historial_operaciones,
     obtener_dashboard_desde_historial,
     obtener_clientes_desde_historial,
     obtener_historial,
@@ -3040,7 +3039,7 @@ async def argo_master_dashboard(
         # OPERACIONES POR TENANT
         # =====================================================
 
-        historial = cargar_historial_operaciones()
+        historial = obtener_historial()
 
         total_operaciones = len(historial)
 
