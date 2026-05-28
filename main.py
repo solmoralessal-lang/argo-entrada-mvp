@@ -1697,6 +1697,36 @@ def validar_licencia_saas(user: dict) -> dict:
 
         licencia = str(licencia).upper()
 
+        fecha_vencimiento = (
+            user.get("fecha_vencimiento")
+            or user.get("licencia_hasta")
+            or user.get("saas_expira")
+        )
+
+        dias_restantes = None
+
+        try:
+
+            if fecha_vencimiento:
+
+                fecha_dt = datetime.fromisoformat(
+                    str(fecha_vencimiento).replace("Z", "")
+                )
+
+                dias_restantes = (
+                    fecha_dt.date() - datetime.now().date()
+                ).days
+
+                # EXPIRACIÓN AUTOMÁTICA
+                if dias_restantes < 0:
+                    licencia = "VENCIDA"
+
+                elif dias_restantes <= 7 and licencia == "ACTIVA":
+                    licencia = "POR_VENCER"
+
+        except Exception as e:
+            print("ERROR VALIDANDO FECHA LICENCIA:", str(e))
+
         if licencia in ["SUSPENDIDA", "VENCIDA", "BLOQUEADA"]:
 
             guardar_auditoria_admin(
