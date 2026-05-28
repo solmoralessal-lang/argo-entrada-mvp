@@ -203,6 +203,19 @@ def argo_dashboard_pro(
 
     x_usuario_email = request.headers.get("x-usuario-email")
 
+    usuario_rbac = obtener_usuario_rbac(x_usuario_email)
+
+    validacion_modulo = validar_modulo_usuario(
+        usuario_rbac,
+        "analytics_pro"
+    )
+
+    if not validacion_modulo.get("ok"):
+        return JSONResponse(
+            status_code=403,
+            content=validacion_modulo
+        )
+
     usuario_actual = obtener_usuario_rbac(x_usuario_email)
 
     if usuario_actual:
@@ -1485,6 +1498,54 @@ def obtener_modulos_por_plan_y_rol(user: dict) -> list:
 # SAAS LIMIT ENFORCEMENT
 # =========================================================
 
+
+
+def usuario_tiene_modulo(user: dict, modulo: str) -> bool:
+    try:
+        if not user:
+            return False
+
+        modulos = obtener_modulos_por_plan_y_rol(user)
+
+        return modulo in modulos
+
+    except Exception:
+        return False
+
+
+def validar_modulo_usuario(user: dict, modulo: str):
+    if not user:
+        return {
+            "ok": False,
+            "error": "Usuario no autenticado",
+            "codigo": "AUTH_REQUIRED"
+        }
+
+    if user.get("activo") is False:
+        return {
+            "ok": False,
+            "error": "Usuario inactivo",
+            "codigo": "USER_INACTIVE"
+        }
+
+    permitido = usuario_tiene_modulo(user, modulo)
+
+    if not permitido:
+        return {
+            "ok": False,
+            "error": f"Modulo no permitido: {modulo}",
+            "codigo": "MODULO_DENEGADO",
+            "modulo": modulo,
+            "plan": obtener_plan_saas(user).get("codigo"),
+            "rol": user.get("rol"),
+        }
+
+    return {
+        "ok": True
+    }
+
+
+
 def contar_operaciones_mes(cliente_id: str) -> int:
     try:
 
@@ -1568,6 +1629,197 @@ def validar_feature_plan(usuario: dict, feature: str):
             "error": str(e),
             "codigo": "FEATURE_VALIDATION_ERROR",
             "feature": feature,
+        }
+
+
+
+
+
+def contar_usuarios_tenant(cliente_id: str) -> int:
+
+    try:
+
+        if not cliente_id:
+            return 0
+
+        url = (
+            f"{SUPABASE_URL}/rest/v1/argo_usuarios"
+            f"?id_cliente=eq.{cliente_id}"
+            f"&select=email"
+        )
+
+        response = requests.get(
+            url,
+            headers=_headers(),
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            return 0
+
+        data = response.json()
+
+        return len(data)
+
+    except Exception:
+        return 0
+
+
+
+
+def validar_licencia_saas(user: dict) -> dict:
+
+    try:
+
+        if not user:
+            return {
+                "ok": False,
+                "error": "Usuario inválido",
+                "codigo": "INVALID_USER"
+            }
+
+        rol = str(user.get("rol") or "").lower()
+
+        # MASTER ADMIN SIEMPRE ENTRA
+        if rol == "master_admin":
+            return {
+                "ok": True,
+                "estado": "MASTER_ADMIN"
+            }
+
+        licencia = (
+            user.get("estado_licencia")
+            or user.get("licencia_estado")
+            or user.get("saas_estado")
+            or "ACTIVA"
+        )
+
+        licencia = str(licencia).upper()
+
+        if licencia in ["SUSPENDIDA", "VENCIDA", "BLOQUEADA"]:
+
+            guardar_auditoria_admin(
+                accion="SAAS_ACCESO_BLOQUEADO",
+                actor_email=user.get("email"),
+                actor_rol=user.get("rol"),
+                tenant=user.get("id_cliente"),
+                detalle={
+                    "estado_licencia": licencia
+                }
+            )
+
+            return {
+                "ok": False,
+                "error": f"Licencia SaaS {licencia}",
+                "codigo": "SAAS_LICENSE_BLOCKED",
+                "estado_licencia": licencia
+            }
+
+        if licencia == "GRACIA":
+
+            return {
+                "ok": True,
+                "estado_licencia": licencia,
+                "warning": "Licencia en periodo de gracia"
+            }
+
+        return {
+            "ok": True,
+            "estado_licencia": licencia
+        }
+
+    except Exception as e:
+
+        return {
+            "ok": False,
+            "error": str(e),
+            "codigo": "SAAS_LICENSE_ERROR"
+        }
+
+
+
+def validar_limite_usuarios_plan(user: dict) -> dict:
+
+    try:
+
+        if not user:
+            return {
+                "ok": False,
+                "error": "Usuario inválido"
+            }
+
+        plan = obtener_plan_saas(user)
+
+        limites = plan.get("limites", {}) or {}
+
+        limite_usuarios = limites.get("usuarios")
+
+        if limite_usuarios is None:
+
+            return {
+                "ok": True,
+                "plan": plan["codigo"],
+                "usuarios_actuales": 0,
+                "limite_usuarios": None,
+                "modo": "ILIMITADO"
+            }
+
+        cliente_id = user.get("id_cliente")
+
+        usuarios_actuales = contar_usuarios_tenant(cliente_id)
+
+        restante = max(limite_usuarios - usuarios_actuales, 0)
+
+        porcentaje = 0
+
+        if limite_usuarios > 0:
+            porcentaje = round(
+                (usuarios_actuales / limite_usuarios) * 100,
+                2
+            )
+
+        if usuarios_actuales >= limite_usuarios:
+
+            guardar_auditoria_admin(
+                accion="LIMITE_SAAS_USUARIOS_EXCEDIDO",
+                actor_email=user.get("email"),
+                actor_rol=user.get("rol"),
+                tenant=cliente_id,
+                detalle={
+                    "plan": plan.get("codigo"),
+                    "limite": limite_usuarios,
+                    "usuarios_actuales": usuarios_actuales,
+                }
+            )
+
+            return {
+                "ok": False,
+                "error": "Limite de usuarios alcanzado",
+                "codigo": "PLAN_USER_LIMIT_REACHED",
+                "plan": plan["codigo"],
+                "usuarios_actuales": usuarios_actuales,
+                "limite_usuarios": limite_usuarios,
+                "usuarios_restantes": restante,
+                "porcentaje": porcentaje,
+                "upgrade_requerido": True
+            }
+
+        return {
+            "ok": True,
+            "plan": plan["codigo"],
+            "usuarios_actuales": usuarios_actuales,
+            "limite_usuarios": limite_usuarios,
+            "usuarios_restantes": restante,
+            "porcentaje": porcentaje,
+            "upgrade_requerido": porcentaje >= 80
+        }
+
+    except Exception as e:
+
+        return {
+            "ok": False,
+            "error": str(e),
+            "codigo": "PLAN_USER_LIMIT_ERROR"
         }
 
 
@@ -1673,6 +1925,12 @@ async def login_usuario(payload: dict = Body(...)):
 
     user = data[0]
 
+    licencia = validar_licencia_saas(user)
+
+    if not licencia.get("ok"):
+
+        return licencia
+
     if not verify_password(password, user.get("password", "")):
         return {
             "ok": False,
@@ -1688,7 +1946,9 @@ async def login_usuario(payload: dict = Body(...)):
             "rol": user["rol"],
             "plan": obtener_plan_saas(user),
             "limites": obtener_plan_saas(user).get("limites"),
-            "modulos": obtener_modulos_por_plan_y_rol(user)
+            "modulos": obtener_modulos_por_plan_y_rol(user),
+            "consumo": validar_limite_operaciones_plan(user),
+            "usuarios_plan": validar_limite_usuarios_plan(user)
         }
     }
 
@@ -1732,7 +1992,25 @@ async def crear_usuario_admin(
                 "error": "Datos incompletos"
             }
 
+        licencia = validar_licencia_saas(usuario_admin)
+
+        if not licencia.get("ok"):
+
+            return JSONResponse(
+                status_code=403,
+                content=licencia
+            )
+
         rol_admin = str(usuario_admin.get("rol") or "").lower()
+
+        validacion_usuarios = validar_limite_usuarios_plan(usuario_admin)
+
+        if not validacion_usuarios.get("ok"):
+
+            return JSONResponse(
+                status_code=403,
+                content=validacion_usuarios
+            )
         cliente_admin = usuario_admin.get("id_cliente")
 
         cliente_usuario = payload.get("id_cliente")
@@ -2679,6 +2957,189 @@ async def consultar_auditoria_admin(
         )
 
 
+
+
+# =========================================================
+# MASTER ADMIN COMMERCIAL DASHBOARD
+# =========================================================
+
+@app.get("/argo/master/dashboard")
+async def argo_master_dashboard(
+    request: Request
+):
+
+    try:
+
+        x_usuario_email = request.headers.get("x-usuario-email")
+
+        usuario = obtener_usuario_rbac(x_usuario_email)
+
+        if not usuario:
+            return {
+                "ok": False,
+                "error": "Usuario no encontrado"
+            }
+
+        rol = str(usuario.get("rol") or "").lower()
+
+        if rol != "master_admin":
+            return {
+                "ok": False,
+                "error": "Acceso restringido MASTER_ADMIN"
+            }
+
+        # =====================================================
+        # CARGAR TENANTS
+        # =====================================================
+
+        url = (
+            f"{SUPABASE_URL}/rest/v1/argo_usuarios"
+            f"?select=*"
+        )
+
+        response = requests.get(
+            url,
+            headers=_headers(),
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            return {
+                "ok": False,
+                "error": "No se pudo cargar informacion SaaS"
+            }
+
+        usuarios = response.json()
+
+        tenants = {}
+        total_usuarios = len(usuarios)
+
+        for u in usuarios:
+
+            tenant = u.get("id_cliente") or "SIN_TENANT"
+
+            if tenant not in tenants:
+
+                plan = obtener_plan_saas(u)
+
+                tenants[tenant] = {
+                    "tenant": tenant,
+                    "plan": plan.get("codigo"),
+                    "usuarios": 0,
+                    "estado_licencia": (
+                        u.get("estado_licencia")
+                        or "ACTIVA"
+                    ),
+                    "operaciones_mes": 0,
+                }
+
+            tenants[tenant]["usuarios"] += 1
+
+        # =====================================================
+        # OPERACIONES POR TENANT
+        # =====================================================
+
+        historial = cargar_historial_operaciones()
+
+        total_operaciones = len(historial)
+
+        for op in historial:
+
+            tenant = (
+                op.get("cliente_id")
+                or op.get("id_cliente")
+                or "SIN_TENANT"
+            )
+
+            if tenant in tenants:
+                tenants[tenant]["operaciones_mes"] += 1
+
+        # =====================================================
+        # METRICAS GLOBALES
+        # =====================================================
+
+        activos = 0
+        suspendidos = 0
+
+        planes = {
+            "BASIC": 0,
+            "PRO": 0,
+            "ENTERPRISE": 0,
+            "CUSTOM": 0,
+        }
+
+        revenue_estimado = 0
+
+        precios = {
+            "BASIC": 99,
+            "PRO": 399,
+            "ENTERPRISE": 1299,
+            "CUSTOM": 3000,
+        }
+
+        for t in tenants.values():
+
+            plan = str(t.get("plan") or "BASIC").upper()
+
+            if plan not in planes:
+                planes[plan] = 0
+
+            planes[plan] += 1
+
+            revenue_estimado += precios.get(plan, 0)
+
+            estado = str(
+                t.get("estado_licencia") or "ACTIVA"
+            ).upper()
+
+            if estado in ["SUSPENDIDA", "VENCIDA"]:
+                suspendidos += 1
+            else:
+                activos += 1
+
+        # =====================================================
+        # TOP TENANTS
+        # =====================================================
+
+        top_tenants = sorted(
+            list(tenants.values()),
+            key=lambda x: x.get("operaciones_mes", 0),
+            reverse=True
+        )[:10]
+
+        return {
+            "ok": True,
+
+            "saas": {
+                "tenants_totales": len(tenants),
+                "tenants_activos": activos,
+                "tenants_suspendidos": suspendidos,
+                "usuarios_totales": total_usuarios,
+                "operaciones_totales": total_operaciones,
+                "revenue_estimado_usd": revenue_estimado,
+                "planes": planes,
+            },
+
+            "top_tenants": top_tenants,
+
+            "upgrade_sugeridos": [
+                t for t in tenants.values()
+                if t.get("operaciones_mes", 0) > 200
+            ]
+        }
+
+    except Exception as e:
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+
+
+
 @app.get("/argo/dashboard")
 async def endpoint_dashboard(
     cliente_id: str = Query(default=None),
@@ -2756,6 +3217,7 @@ async def endpoint_dashboard(
         }
 @app.post("/argo/ocr")
 async def argo_ocr(
+    request: Request,
     archivo1: UploadFile = File(None),
     archivo2: UploadFile = File(None),
     archivo3: UploadFile = File(None),
@@ -2764,6 +3226,31 @@ async def argo_ocr(
 ):
     import json
     import re
+
+    x_usuario_email = request.headers.get("x-usuario-email")
+
+    usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+    licencia = validar_licencia_saas(usuario_actual)
+
+    if not licencia.get("ok"):
+
+        return JSONResponse(
+            status_code=403,
+            content=licencia
+        )
+
+    validacion_modulo = validar_modulo_usuario(
+        usuario_actual,
+        "entrada_documental"
+    )
+
+    if not validacion_modulo.get("ok"):
+        return JSONResponse(
+            status_code=403,
+            content=validacion_modulo
+        )
+
 
     archivos = [archivo1, archivo2, archivo3, archivo4, archivo5]
     archivos_validos = [a for a in archivos if a is not None]
