@@ -44,6 +44,7 @@ class ActualizarIncidenciaRequest(BaseModel):
     comentario: str = ""
 
 
+# redeploy master dashboard historial loader fix
 app = FastAPI()
 
 # 🔷 Primero crear carpeta
