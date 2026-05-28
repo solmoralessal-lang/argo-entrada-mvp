@@ -3123,6 +3123,54 @@ async def argo_master_dashboard(
             reverse=True
         )[:10]
 
+        # =====================================================
+        # EXECUTIVE ACTIVITY FEED
+        # =====================================================
+
+        activity_feed = []
+        operaciones_criticas = 0
+        aprobaciones_total = 0
+
+        for op in historial[-50:]:
+
+            if not isinstance(op, dict):
+                continue
+
+            severidad = str(
+                op.get("semaforo_operacion")
+                or op.get("riesgo_global")
+                or "MEDIA"
+            ).upper()
+
+            tenant = (
+                op.get("cliente_nombre")
+                or op.get("cliente_id")
+                or "SIN_TENANT"
+            )
+
+            if severidad in ["ALTA", "CRITICA", "CRÍTICA"]:
+                operaciones_criticas += 1
+
+            if op.get("aprobada") is True:
+                aprobaciones_total += 1
+
+            activity_feed.append({
+                "tenant": tenant,
+                "operacion": op.get("id_operacion"),
+                "riesgo": severidad,
+                "aprobada": op.get("aprobada", False),
+                "fecha": (
+                    op.get("fecha_aprobacion")
+                    or op.get("fecha")
+                    or "N/D"
+                )
+            })
+
+        ultimas_aprobaciones = [
+            x for x in activity_feed
+            if x.get("aprobada")
+        ][-10:]
+
         return {
             "ok": True,
 
@@ -3134,9 +3182,15 @@ async def argo_master_dashboard(
                 "operaciones_totales": total_operaciones,
                 "revenue_estimado_usd": revenue_estimado,
                 "planes": planes,
+                "operaciones_criticas": operaciones_criticas,
+                "aprobaciones_total": aprobaciones_total,
             },
 
             "top_tenants": top_tenants,
+
+            "activity_feed": activity_feed[-15:],
+
+            "ultimas_aprobaciones": ultimas_aprobaciones,
 
             "upgrade_sugeridos": [
                 t for t in tenants.values()
