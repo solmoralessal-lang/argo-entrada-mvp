@@ -2686,6 +2686,7 @@ async def cambiar_plan_usuario_admin(
         )
 
 
+# tenant billing endpoint enabled
 # =========================================================
 # SAAS ADMIN - LICENCIA / BILLING TENANT
 # =========================================================
