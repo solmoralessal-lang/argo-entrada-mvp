@@ -3040,11 +3040,26 @@ async def argo_master_dashboard(
         # OPERACIONES POR TENANT
         # =====================================================
 
-        historial = obtener_historial()
+        historial_raw = obtener_historial()
+
+        if isinstance(historial_raw, dict):
+            historial = (
+                historial_raw.get("operaciones")
+                or historial_raw.get("historial")
+                or historial_raw.get("data")
+                or []
+            )
+        elif isinstance(historial_raw, list):
+            historial = historial_raw
+        else:
+            historial = []
 
         total_operaciones = len(historial)
 
         for op in historial:
+
+            if not isinstance(op, dict):
+                continue
 
             tenant = (
                 op.get("cliente_id")
