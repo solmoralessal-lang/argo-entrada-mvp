@@ -2687,6 +2687,130 @@ async def cambiar_plan_usuario_admin(
 
 
 # =========================================================
+# SAAS ADMIN - LICENCIA / BILLING TENANT
+# =========================================================
+
+@app.patch("/argo/admin/tenant/licencia")
+async def actualizar_licencia_tenant_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+        tenant_id = str(
+            payload.get("tenant")
+            or payload.get("id_cliente")
+            or payload.get("cliente_id")
+            or ""
+        ).strip()
+
+        nuevo_estado = str(
+            payload.get("estado_licencia")
+            or payload.get("estado")
+            or "ACTIVA"
+        ).strip().upper()
+
+        fecha_vencimiento = (
+            payload.get("fecha_vencimiento")
+            or payload.get("licencia_hasta")
+            or payload.get("saas_expira")
+        )
+
+        if not tenant_id:
+            return {
+                "ok": False,
+                "error": "Tenant requerido"
+            }
+
+        if nuevo_estado not in ["ACTIVA", "POR_VENCER", "SUSPENDIDA", "VENCIDA", "BLOQUEADA", "CANCELADA"]:
+            return {
+                "ok": False,
+                "error": "Estado de licencia inválido",
+                "permitidos": ["ACTIVA", "POR_VENCER", "SUSPENDIDA", "VENCIDA", "BLOQUEADA", "CANCELADA"]
+            }
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos={"master_admin"},
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo,
+                    "codigo": "MASTER_ADMIN_REQUIRED"
+                }
+            )
+
+        update_data = {
+            "estado_licencia": nuevo_estado
+        }
+
+        if fecha_vencimiento:
+            update_data["fecha_vencimiento"] = fecha_vencimiento
+
+        url = (
+            f"{SUPABASE_URL}/rest/v1/argo_usuarios"
+            f"?id_cliente=eq.{tenant_id}"
+        )
+
+        response = requests.patch(
+            url,
+            headers={
+                **_headers(),
+                "Prefer": "return=representation"
+            },
+            json=update_data,
+            timeout=30
+        )
+
+        if response.status_code not in [200, 204]:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "ok": False,
+                    "error": "No se pudo actualizar licencia tenant",
+                    "detalle": response.text
+                }
+            )
+
+        actualizados = response.json() if response.text else []
+
+        guardar_auditoria_admin(
+            accion="actualizar_licencia_tenant",
+            actor_email=x_usuario_email,
+            actor_rol="master_admin",
+            tenant=tenant_id,
+            detalle={
+                "estado_licencia": nuevo_estado,
+                "fecha_vencimiento": fecha_vencimiento,
+                "usuarios_actualizados": len(actualizados),
+            }
+        )
+
+        return {
+            "ok": True,
+            "mensaje": "Licencia tenant actualizada",
+            "tenant": tenant_id,
+            "estado_licencia": nuevo_estado,
+            "fecha_vencimiento": fecha_vencimiento,
+            "usuarios_actualizados": len(actualizados),
+            "data": actualizados,
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+
+
+
+# =========================================================
 # SAAS ADMIN - RESET PASSWORD USUARIO
 # =========================================================
 
