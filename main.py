@@ -25,6 +25,7 @@ from argo_control import argo_control_validar_v2
 from argo_historial import (
     normalizar_operacion_para_historial,
     guardar_operacion_historial,
+    cargar_historial_operaciones,
     obtener_dashboard_desde_historial,
     obtener_clientes_desde_historial,
     obtener_historial,
