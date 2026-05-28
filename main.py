@@ -3053,14 +3053,19 @@ async def argo_master_dashboard(
 
                 plan = obtener_plan_saas(u)
 
+                licencia_info = validar_licencia_saas(u)
+
                 tenants[tenant] = {
                     "tenant": tenant,
                     "plan": plan.get("codigo"),
                     "usuarios": 0,
                     "estado_licencia": (
-                        u.get("estado_licencia")
+                        licencia_info.get("estado_licencia")
+                        or u.get("estado_licencia")
                         or "ACTIVA"
                     ),
+                    "dias_restantes": licencia_info.get("dias_restantes"),
+                    "fecha_vencimiento": licencia_info.get("fecha_vencimiento"),
                     "operaciones_mes": 0,
                 }
 
