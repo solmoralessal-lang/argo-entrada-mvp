@@ -3384,6 +3384,7 @@ async def argo_master_dashboard(
             fecha_op = (
                 op.get("fecha_aprobacion")
                 or op.get("fecha")
+                or op.get("timestamp_local")
                 or op.get("created_at")
                 or op.get("timestamp")
             )
