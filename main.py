@@ -4493,11 +4493,20 @@ async def argo_master_export(request: Request):
 
             for col in sheet.columns:
                 max_len = 0
-                col_letter = col[0].column_letter
+                col_letter = None
+
                 for cell in col:
+                    if not hasattr(cell, "column_letter"):
+                        continue
+
+                    if col_letter is None:
+                        col_letter = cell.column_letter
+
                     if cell.value is not None:
                         max_len = max(max_len, len(str(cell.value)))
-                sheet.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 42)
+
+                if col_letter:
+                    sheet.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 42)
 
         saas = dashboard.get("saas", {}) or {}
         resumen = dashboard.get("resumen_ejecutivo", {}) or {}
