@@ -188,6 +188,40 @@ def obtener_clientes_desde_historial() -> Dict[str, Any]:
 
 
 def obtener_historial(cliente_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Historial enterprise SaaS:
+    1) Supabase como fuente principal persistente.
+    2) JSONL local solo como fallback para desarrollo/offline.
+
+    Esto evita que Render pierda operaciones después de restart/deploy.
+    """
+    try:
+        from argo_supabase_historial import obtener_historial_supabase
+
+        registros = obtener_historial_supabase(cliente_id)
+
+        registros = sorted(
+            registros,
+            key=lambda x: (
+                x.get("created_at")
+                or x.get("timestamp_local")
+                or x.get("fecha")
+                or ""
+            ),
+            reverse=True
+        )
+
+        return {
+            "ok": True,
+            "fuente": "supabase",
+            "total": len(registros),
+            "cliente_id": cliente_id,
+            "operaciones": registros
+        }
+
+    except Exception as supabase_err:
+        print("WARNING HISTORIAL SUPABASE FALLBACK JSONL:", str(supabase_err))
+
     registros = leer_historial_jsonl()
 
     registros = sorted(
@@ -201,6 +235,7 @@ def obtener_historial(cliente_id: Optional[str] = None) -> Dict[str, Any]:
 
     return {
         "ok": True,
+        "fuente": "jsonl_fallback",
         "total": len(registros),
         "cliente_id": cliente_id,
         "operaciones": registros
