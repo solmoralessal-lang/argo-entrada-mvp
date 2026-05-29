@@ -1756,7 +1756,9 @@ def validar_licencia_saas(user: dict) -> dict:
 
         return {
             "ok": True,
-            "estado_licencia": licencia
+            "estado_licencia": licencia,
+            "dias_restantes": dias_restantes,
+            "fecha_vencimiento": fecha_vencimiento,
         }
 
     except Exception as e:
