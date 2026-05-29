@@ -3334,6 +3334,44 @@ async def argo_master_dashboard(
             if x.get("aprobada")
         ][-10:]
 
+        licencias_por_vencer = sorted(
+            [
+                t for t in tenants.values()
+                if t.get("dias_restantes") is not None
+                and t.get("dias_restantes") <= 30
+            ],
+            key=lambda x: x.get("dias_restantes", 999999)
+        )
+
+        tenants_en_riesgo = [
+            t for t in tenants.values()
+            if str(t.get("estado_licencia") or "").upper()
+            in ["POR_VENCER", "SUSPENDIDA", "VENCIDA", "BLOQUEADA"]
+            or (
+                t.get("dias_restantes") is not None
+                and t.get("dias_restantes") <= 7
+            )
+        ]
+
+        if operaciones_criticas > 0 or tenants_en_riesgo:
+            riesgo_global = "ALTO"
+        elif licencias_por_vencer:
+            riesgo_global = "MEDIO"
+        else:
+            riesgo_global = "BAJO"
+
+        resumen_ejecutivo = {
+            "riesgo_global": riesgo_global,
+            "licencias_por_vencer_total": len(licencias_por_vencer),
+            "tenants_en_riesgo_total": len(tenants_en_riesgo),
+            "activity_feed_total": len(activity_feed),
+            "revenue_mensual_estimado_usd": revenue_estimado,
+            "ticket_promedio_tenant_usd": round(
+                revenue_estimado / max(len(tenants), 1),
+                2
+            ),
+        }
+
         return {
             "ok": True,
 
@@ -3347,9 +3385,18 @@ async def argo_master_dashboard(
                 "planes": planes,
                 "operaciones_criticas": operaciones_criticas,
                 "aprobaciones_total": aprobaciones_total,
+                "riesgo_global": riesgo_global,
+                "licencias_por_vencer_total": len(licencias_por_vencer),
+                "tenants_en_riesgo_total": len(tenants_en_riesgo),
             },
 
+            "resumen_ejecutivo": resumen_ejecutivo,
+
             "top_tenants": top_tenants,
+
+            "licencias_por_vencer": licencias_por_vencer,
+
+            "tenants_en_riesgo": tenants_en_riesgo,
 
             "activity_feed": activity_feed[-15:],
 
