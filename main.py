@@ -3360,6 +3360,94 @@ async def argo_master_dashboard(
         else:
             riesgo_global = "BAJO"
 
+        operaciones_por_dia_map = {
+            "LUN": 0,
+            "MAR": 0,
+            "MIE": 0,
+            "JUE": 0,
+            "VIE": 0,
+            "SAB": 0,
+            "DOM": 0,
+        }
+
+        riesgos_map = {
+            "BAJO": 0,
+            "MEDIO": 0,
+            "ALTO": 0,
+            "CRITICO": 0,
+        }
+
+        for op in historial:
+            if not isinstance(op, dict):
+                continue
+
+            fecha_op = (
+                op.get("fecha_aprobacion")
+                or op.get("fecha")
+                or op.get("created_at")
+                or op.get("timestamp")
+            )
+
+            try:
+                if fecha_op:
+                    fecha_dt = datetime.fromisoformat(
+                        str(fecha_op).replace("Z", "").split(".")[0]
+                    )
+                    dia_idx = fecha_dt.weekday()
+                    dia_nombre = ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"][dia_idx]
+                    operaciones_por_dia_map[dia_nombre] += 1
+            except Exception:
+                pass
+
+            riesgo_op = str(
+                op.get("semaforo_operacion")
+                or op.get("riesgo_global")
+                or "MEDIO"
+            ).upper().replace("CRÍTICA", "CRITICO").replace("CRITICA", "CRITICO")
+
+            if riesgo_op in ["BAJA", "OK", "OPERABLE"]:
+                riesgo_op = "BAJO"
+            elif riesgo_op in ["MEDIA", "REVISION", "REVISIÓN"]:
+                riesgo_op = "MEDIO"
+            elif riesgo_op in ["ALTA"]:
+                riesgo_op = "ALTO"
+            elif riesgo_op not in riesgos_map:
+                riesgo_op = "MEDIO"
+
+            riesgos_map[riesgo_op] += 1
+
+        revenue_historico = [
+            {
+                "mes": "ACTUAL",
+                "revenue": revenue_estimado
+            }
+        ]
+
+        operaciones_por_dia = [
+            {"dia": dia, "ops": total}
+            for dia, total in operaciones_por_dia_map.items()
+        ]
+
+        riesgos = [
+            {"riesgo": riesgo, "total": total}
+            for riesgo, total in riesgos_map.items()
+        ]
+
+        aprobaciones = {
+            "aprobadas": aprobaciones_total,
+            "pendientes": max(total_operaciones - aprobaciones_total, 0),
+            "total": total_operaciones,
+        }
+
+        analytics = {
+            "revenue_historico": revenue_historico,
+            "operaciones_por_dia": operaciones_por_dia,
+            "riesgos": riesgos,
+            "aprobaciones": aprobaciones,
+            "top_tenants": top_tenants,
+            "activity_feed_total": len(activity_feed),
+        }
+
         resumen_ejecutivo = {
             "riesgo_global": riesgo_global,
             "licencias_por_vencer_total": len(licencias_por_vencer),
@@ -3370,6 +3458,8 @@ async def argo_master_dashboard(
                 revenue_estimado / max(len(tenants), 1),
                 2
             ),
+            "aprobaciones_total": aprobaciones_total,
+            "operaciones_por_dia_total": sum(operaciones_por_dia_map.values()),
         }
 
         return {
@@ -3391,6 +3481,8 @@ async def argo_master_dashboard(
             },
 
             "resumen_ejecutivo": resumen_ejecutivo,
+
+            "analytics": analytics,
 
             "top_tenants": top_tenants,
 
