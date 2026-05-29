@@ -16,7 +16,8 @@ from argo_master import build_master_output
 from argo_history import save_pipeline_to_history, read_history
 from argo_dashboard import build_dashboard_output
 from utils_operacion import generar_id_operacion, escribir_log_operacion
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import re
 
 from argo_excel_report import generar_reporte_ejecutivo
@@ -4409,6 +4410,230 @@ async def procesar_desde_ocr(
             "ok": False,
             "error": str(e),
         }
+
+
+# =========================================================
+# MASTER ADMIN EXECUTIVE EXPORT
+# =========================================================
+
+@app.get("/argo/master/export")
+async def argo_master_export(request: Request):
+    try:
+        dashboard = await argo_master_dashboard(request)
+
+        if not isinstance(dashboard, dict) or not dashboard.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=dashboard if isinstance(dashboard, dict) else {
+                    "ok": False,
+                    "error": "No autorizado o dashboard inválido"
+                }
+            )
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_name = f"ARGO_MASTER_EXECUTIVE_EXPORT_{timestamp}.xlsx"
+        output_path = os.path.join("outputs", output_name)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Resumen Ejecutivo"
+
+        dark = "0F172A"
+        blue = "2563EB"
+        green = "16A34A"
+        amber = "F59E0B"
+        red = "DC2626"
+        light = "F8FAFC"
+        white = "FFFFFF"
+        border_color = "CBD5E1"
+
+        title_font = Font(bold=True, size=18, color=white)
+        subtitle_font = Font(bold=True, size=12, color=dark)
+        header_font = Font(bold=True, color=white)
+        normal_font = Font(size=11, color=dark)
+        white_fill = PatternFill("solid", fgColor=white)
+        dark_fill = PatternFill("solid", fgColor=dark)
+        blue_fill = PatternFill("solid", fgColor=blue)
+        light_fill = PatternFill("solid", fgColor=light)
+        thin = Side(style="thin", color=border_color)
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        def style_title(sheet, title, subtitle):
+            sheet.merge_cells("A1:F1")
+            sheet["A1"] = title
+            sheet["A1"].font = title_font
+            sheet["A1"].fill = dark_fill
+            sheet["A1"].alignment = Alignment(horizontal="center")
+
+            sheet.merge_cells("A2:F2")
+            sheet["A2"] = subtitle
+            sheet["A2"].font = Font(size=11, color=white)
+            sheet["A2"].fill = dark_fill
+            sheet["A2"].alignment = Alignment(horizontal="center")
+
+            for col in range(1, 7):
+                sheet.cell(row=1, column=col).border = border
+                sheet.cell(row=2, column=col).border = border
+
+        def write_table(sheet, start_row, headers, rows):
+            for idx, h in enumerate(headers, start=1):
+                c = sheet.cell(row=start_row, column=idx, value=h)
+                c.font = header_font
+                c.fill = blue_fill
+                c.alignment = Alignment(horizontal="center")
+                c.border = border
+
+            for r_idx, row in enumerate(rows, start=start_row + 1):
+                for c_idx, value in enumerate(row, start=1):
+                    c = sheet.cell(row=r_idx, column=c_idx, value=value)
+                    c.font = normal_font
+                    c.fill = white_fill if r_idx % 2 else light_fill
+                    c.border = border
+                    c.alignment = Alignment(vertical="center")
+
+            for col in sheet.columns:
+                max_len = 0
+                col_letter = col[0].column_letter
+                for cell in col:
+                    if cell.value is not None:
+                        max_len = max(max_len, len(str(cell.value)))
+                sheet.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 42)
+
+        saas = dashboard.get("saas", {}) or {}
+        resumen = dashboard.get("resumen_ejecutivo", {}) or {}
+        analytics = dashboard.get("analytics", {}) or {}
+
+        style_title(
+            ws,
+            "ARGO MASTER ADMIN EXECUTIVE EXPORT",
+            f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+
+        resumen_rows = [
+            ["Tenants totales", saas.get("tenants_totales", 0)],
+            ["Tenants activos", saas.get("tenants_activos", 0)],
+            ["Tenants suspendidos", saas.get("tenants_suspendidos", 0)],
+            ["Usuarios totales", saas.get("usuarios_totales", 0)],
+            ["Operaciones totales", saas.get("operaciones_totales", 0)],
+            ["Revenue estimado USD", saas.get("revenue_estimado_usd", 0)],
+            ["Riesgo global", saas.get("riesgo_global", "BAJO")],
+            ["Operaciones críticas", saas.get("operaciones_criticas", 0)],
+            ["Aprobaciones total", saas.get("aprobaciones_total", 0)],
+            ["Licencias por vencer", saas.get("licencias_por_vencer_total", 0)],
+            ["Tenants en riesgo", saas.get("tenants_en_riesgo_total", 0)],
+            ["Activity Feed eventos", resumen.get("activity_feed_total", 0)],
+            ["Ticket promedio tenant USD", resumen.get("ticket_promedio_tenant_usd", 0)],
+        ]
+
+        write_table(ws, 4, ["Métrica", "Valor"], resumen_rows)
+
+        # Tenants
+        ws_tenants = wb.create_sheet("Tenants")
+        style_title(ws_tenants, "TOP TENANTS", "Uso, licencias y plan SaaS")
+        tenant_rows = [
+            [
+                t.get("tenant"),
+                t.get("plan"),
+                t.get("usuarios"),
+                t.get("estado_licencia"),
+                t.get("dias_restantes"),
+                t.get("fecha_vencimiento"),
+                t.get("operaciones_mes"),
+            ]
+            for t in dashboard.get("top_tenants", []) or []
+        ]
+        write_table(
+            ws_tenants,
+            4,
+            ["Tenant", "Plan", "Usuarios", "Licencia", "Días restantes", "Vencimiento", "Operaciones mes"],
+            tenant_rows
+        )
+
+        # Analytics
+        ws_an = wb.create_sheet("Analytics")
+        style_title(ws_an, "ANALYTICS EXECUTIVE", "Revenue, operaciones, riesgos y aprobaciones")
+
+        revenue_rows = [
+            [r.get("mes"), r.get("revenue")]
+            for r in analytics.get("revenue_historico", []) or []
+        ]
+        write_table(ws_an, 4, ["Mes", "Revenue"], revenue_rows)
+
+        ops_rows = [
+            [o.get("dia"), o.get("ops")]
+            for o in analytics.get("operaciones_por_dia", []) or []
+        ]
+        write_table(ws_an, 10, ["Día", "Operaciones"], ops_rows)
+
+        risk_rows = [
+            [r.get("riesgo"), r.get("total")]
+            for r in analytics.get("riesgos", []) or []
+        ]
+        write_table(ws_an, 20, ["Riesgo", "Total"], risk_rows)
+
+        aprob = analytics.get("aprobaciones", {}) or {}
+        write_table(
+            ws_an,
+            28,
+            ["Aprobadas", "Pendientes", "Total"],
+            [[aprob.get("aprobadas", 0), aprob.get("pendientes", 0), aprob.get("total", 0)]]
+        )
+
+        # Activity Feed
+        ws_feed = wb.create_sheet("Activity Feed")
+        style_title(ws_feed, "EXECUTIVE ACTIVITY FEED", "Eventos recientes de operación")
+        feed_rows = [
+            [
+                a.get("tenant"),
+                a.get("operacion"),
+                a.get("riesgo"),
+                "SI" if a.get("aprobada") else "NO",
+                a.get("fecha"),
+            ]
+            for a in dashboard.get("activity_feed", []) or []
+        ]
+        write_table(
+            ws_feed,
+            4,
+            ["Tenant", "Operación", "Riesgo", "Aprobada", "Fecha"],
+            feed_rows
+        )
+
+        # Últimas aprobaciones
+        ws_ap = wb.create_sheet("Aprobaciones")
+        style_title(ws_ap, "ÚLTIMAS APROBACIONES", "Aprobaciones recientes")
+        aprob_rows = [
+            [
+                a.get("tenant"),
+                a.get("operacion"),
+                a.get("riesgo"),
+                a.get("fecha"),
+            ]
+            for a in dashboard.get("ultimas_aprobaciones", []) or []
+        ]
+        write_table(
+            ws_ap,
+            4,
+            ["Tenant", "Operación", "Riesgo", "Fecha aprobación"],
+            aprob_rows
+        )
+
+        wb.save(output_path)
+
+        return FileResponse(
+            output_path,
+            filename=output_name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
 
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
 
