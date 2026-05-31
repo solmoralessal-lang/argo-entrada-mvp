@@ -4459,28 +4459,31 @@ async def argo_master_export(request: Request):
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         def style_title(sheet, title, subtitle):
-            sheet.merge_cells("A1:F1")
+            sheet.merge_cells("A1:H1")
             sheet["A1"] = title
-            sheet["A1"].font = title_font
+            sheet["A1"].font = Font(bold=True, size=20, color=white)
             sheet["A1"].fill = dark_fill
-            sheet["A1"].alignment = Alignment(horizontal="center")
+            sheet["A1"].alignment = Alignment(horizontal="center", vertical="center")
+            sheet.row_dimensions[1].height = 30
 
-            sheet.merge_cells("A2:F2")
+            sheet.merge_cells("A2:H2")
             sheet["A2"] = subtitle
             sheet["A2"].font = Font(size=11, color=white)
             sheet["A2"].fill = dark_fill
-            sheet["A2"].alignment = Alignment(horizontal="center")
+            sheet["A2"].alignment = Alignment(horizontal="center", vertical="center")
+            sheet.row_dimensions[2].height = 22
 
-            for col in range(1, 7):
+            for col in range(1, 9):
                 sheet.cell(row=1, column=col).border = border
                 sheet.cell(row=2, column=col).border = border
 
-        def write_table(sheet, start_row, headers, rows):
+        def write_table(sheet, start_row, headers, rows, freeze=True, filters=True):
+            end_col = max(len(headers), 1)
             for idx, h in enumerate(headers, start=1):
                 c = sheet.cell(row=start_row, column=idx, value=h)
                 c.font = header_font
                 c.fill = blue_fill
-                c.alignment = Alignment(horizontal="center")
+                c.alignment = Alignment(horizontal="center", vertical="center")
                 c.border = border
 
             for r_idx, row in enumerate(rows, start=start_row + 1):
@@ -4489,7 +4492,15 @@ async def argo_master_export(request: Request):
                     c.font = normal_font
                     c.fill = white_fill if r_idx % 2 else light_fill
                     c.border = border
-                    c.alignment = Alignment(vertical="center")
+                    c.alignment = Alignment(vertical="center", wrap_text=True)
+
+            last_row = start_row + max(len(rows), 1)
+
+            if filters:
+                sheet.auto_filter.ref = f"A{start_row}:{sheet.cell(row=start_row, column=end_col).column_letter}{last_row}"
+
+            if freeze:
+                sheet.freeze_panes = f"A{start_row + 1}"
 
             for col in sheet.columns:
                 max_len = 0
@@ -4506,7 +4517,21 @@ async def argo_master_export(request: Request):
                         max_len = max(max_len, len(str(cell.value)))
 
                 if col_letter:
-                    sheet.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 42)
+                    sheet.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 46)
+
+        def metric_card(sheet, cell, title, value, fill_color):
+            sheet[cell] = title
+            sheet[cell].font = Font(bold=True, size=11, color=white)
+            sheet[cell].fill = PatternFill("solid", fgColor=fill_color)
+            sheet[cell].alignment = Alignment(horizontal="center")
+
+            value_cell = sheet.cell(row=sheet[cell].row + 1, column=sheet[cell].column)
+            value_cell.value = value
+            value_cell.font = Font(bold=True, size=16, color=dark)
+            value_cell.fill = light_fill
+            value_cell.alignment = Alignment(horizontal="center")
+            value_cell.border = border
+            sheet[cell].border = border
 
         saas = dashboard.get("saas", {}) or {}
         resumen = dashboard.get("resumen_ejecutivo", {}) or {}
@@ -4514,9 +4539,22 @@ async def argo_master_export(request: Request):
 
         style_title(
             ws,
-            "ARGO MASTER ADMIN EXECUTIVE EXPORT",
-            f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            "ARGO ENTERPRISE SaaS — EXECUTIVE REPORT",
+            f"Reporte ejecutivo generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
+
+        ws["A4"] = "Resumen CEO"
+        ws["A4"].font = Font(bold=True, size=15, color=dark)
+
+        metric_card(ws, "A6", "Tenants", saas.get("tenants_totales", 0), blue)
+        metric_card(ws, "B6", "Usuarios", saas.get("usuarios_totales", 0), blue)
+        metric_card(ws, "C6", "Operaciones", saas.get("operaciones_totales", 0), green)
+        metric_card(ws, "D6", "Revenue USD", saas.get("revenue_estimado_usd", 0), green)
+        metric_card(ws, "E6", "Riesgo Global", saas.get("riesgo_global", "BAJO"), amber if saas.get("riesgo_global") == "MEDIO" else (red if saas.get("riesgo_global") == "ALTO" else green))
+        metric_card(ws, "F6", "Aprobaciones", saas.get("aprobaciones_total", 0), blue)
+
+        ws["A10"] = "Detalle Ejecutivo"
+        ws["A10"].font = Font(bold=True, size=13, color=dark)
 
         resumen_rows = [
             ["Tenants totales", saas.get("tenants_totales", 0)],
@@ -4534,11 +4572,11 @@ async def argo_master_export(request: Request):
             ["Ticket promedio tenant USD", resumen.get("ticket_promedio_tenant_usd", 0)],
         ]
 
-        write_table(ws, 4, ["Métrica", "Valor"], resumen_rows)
+        write_table(ws, 12, ["Métrica", "Valor"], resumen_rows)
 
         # Tenants
         ws_tenants = wb.create_sheet("Tenants")
-        style_title(ws_tenants, "TOP TENANTS", "Uso, licencias y plan SaaS")
+        style_title(ws_tenants, "TENANTS & LICENSES", "Uso, licencias, plan SaaS y operaciones por tenant")
         tenant_rows = [
             [
                 t.get("tenant"),
@@ -4560,7 +4598,7 @@ async def argo_master_export(request: Request):
 
         # Analytics
         ws_an = wb.create_sheet("Analytics")
-        style_title(ws_an, "ANALYTICS EXECUTIVE", "Revenue, operaciones, riesgos y aprobaciones")
+        style_title(ws_an, "ANALYTICS EXECUTIVE", "Revenue, operaciones por día, riesgos y aprobaciones")
 
         revenue_rows = [
             [r.get("mes"), r.get("revenue")]
@@ -4590,7 +4628,7 @@ async def argo_master_export(request: Request):
 
         # Activity Feed
         ws_feed = wb.create_sheet("Activity Feed")
-        style_title(ws_feed, "EXECUTIVE ACTIVITY FEED", "Eventos recientes de operación")
+        style_title(ws_feed, "EXECUTIVE ACTIVITY FEED", "Eventos recientes, riesgos y estado de aprobación")
         feed_rows = [
             [
                 a.get("tenant"),
@@ -4609,8 +4647,8 @@ async def argo_master_export(request: Request):
         )
 
         # Últimas aprobaciones
-        ws_ap = wb.create_sheet("Aprobaciones")
-        style_title(ws_ap, "ÚLTIMAS APROBACIONES", "Aprobaciones recientes")
+        ws_ap = wb.create_sheet("Executive Audit")
+        style_title(ws_ap, "EXECUTIVE AUDIT", "Últimas aprobaciones y trazabilidad ejecutiva")
         aprob_rows = [
             [
                 a.get("tenant"),
@@ -4626,6 +4664,58 @@ async def argo_master_export(request: Request):
             ["Tenant", "Operación", "Riesgo", "Fecha aprobación"],
             aprob_rows
         )
+
+        ws_risk = wb.create_sheet("Risk & Licenses")
+        style_title(ws_risk, "RISK & LICENSE CONTROL", "Licencias por vencer, tenants en riesgo y exposición SaaS")
+
+        risk_license_rows = [
+            ["Riesgo global", saas.get("riesgo_global", "BAJO")],
+            ["Operaciones críticas", saas.get("operaciones_criticas", 0)],
+            ["Licencias por vencer", saas.get("licencias_por_vencer_total", 0)],
+            ["Tenants en riesgo", saas.get("tenants_en_riesgo_total", 0)],
+            ["Activity Feed eventos", resumen.get("activity_feed_total", 0)],
+        ]
+
+        write_table(ws_risk, 4, ["Indicador", "Valor"], risk_license_rows)
+
+        lic_rows = [
+            [
+                t.get("tenant"),
+                t.get("plan"),
+                t.get("estado_licencia"),
+                t.get("dias_restantes"),
+                t.get("fecha_vencimiento"),
+            ]
+            for t in dashboard.get("licencias_por_vencer", []) or []
+        ]
+
+        write_table(
+            ws_risk,
+            13,
+            ["Tenant", "Plan", "Estado licencia", "Días restantes", "Vencimiento"],
+            lic_rows
+        )
+
+        tenant_risk_rows = [
+            [
+                t.get("tenant"),
+                t.get("plan"),
+                t.get("estado_licencia"),
+                t.get("dias_restantes"),
+                t.get("operaciones_mes"),
+            ]
+            for t in dashboard.get("tenants_en_riesgo", []) or []
+        ]
+
+        write_table(
+            ws_risk,
+            22,
+            ["Tenant", "Plan", "Estado licencia", "Días restantes", "Operaciones mes"],
+            tenant_risk_rows
+        )
+
+        for sheet in wb.worksheets:
+            sheet.sheet_view.showGridLines = False
 
         wb.save(output_path)
 
