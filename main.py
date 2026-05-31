@@ -2814,6 +2814,149 @@ async def actualizar_licencia_tenant_admin(
 
 
 
+
+# =========================================================
+# SAAS ADMIN - PLAN TENANT
+# =========================================================
+
+@app.patch("/argo/admin/tenant/plan")
+async def actualizar_plan_tenant_admin(
+    payload: dict = Body(...),
+    x_usuario_email: str = Header(default=None),
+):
+    try:
+        tenant_id = str(
+            payload.get("tenant")
+            or payload.get("id_cliente")
+            or payload.get("cliente_id")
+            or ""
+        ).strip()
+
+        nuevo_plan = str(
+            payload.get("plan")
+            or payload.get("plan_saas")
+            or ""
+        ).strip().upper()
+
+        if not tenant_id:
+            return {
+                "ok": False,
+                "error": "Tenant requerido"
+            }
+
+        if nuevo_plan not in PLANES_SAAS:
+            return {
+                "ok": False,
+                "error": "Plan SaaS inválido",
+                "permitidos": list(PLANES_SAAS.keys())
+            }
+
+        permitido, usuario_admin, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos={"master_admin"},
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo,
+                    "codigo": "MASTER_ADMIN_REQUIRED"
+                }
+            )
+
+        # Obtener usuarios actuales para auditoría
+        consulta_url = (
+            f"{SUPABASE_URL}/rest/v1/argo_usuarios"
+            f"?id_cliente=eq.{tenant_id}&select=email,plan_saas,plan,tipo_plan,id_cliente"
+        )
+
+        consulta = requests.get(
+            consulta_url,
+            headers=_headers(),
+            timeout=30
+        )
+
+        usuarios_antes = consulta.json() if consulta.status_code == 200 else []
+
+        planes_anteriores = sorted(list(set([
+            str(
+                u.get("plan_saas")
+                or u.get("plan")
+                or u.get("tipo_plan")
+                or "BASIC"
+            ).upper()
+            for u in usuarios_antes
+            if isinstance(u, dict)
+        ])))
+
+        update_data = {
+            "plan_saas": nuevo_plan
+        }
+
+        update_url = (
+            f"{SUPABASE_URL}/rest/v1/argo_usuarios"
+            f"?id_cliente=eq.{tenant_id}"
+        )
+
+        response = requests.patch(
+            update_url,
+            headers={
+                **_headers(),
+                "Prefer": "return=representation"
+            },
+            json=update_data,
+            timeout=30
+        )
+
+        if response.status_code not in [200, 204]:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "ok": False,
+                    "error": "No se pudo actualizar plan tenant",
+                    "detalle": response.text
+                }
+            )
+
+        actualizados = response.json() if response.text else []
+
+        guardar_auditoria_admin(
+            accion="actualizar_plan_tenant",
+            actor_email=x_usuario_email,
+            actor_rol="master_admin",
+            tenant=tenant_id,
+            detalle={
+                "planes_anteriores": planes_anteriores,
+                "plan_nuevo": nuevo_plan,
+                "usuarios_actualizados": len(actualizados),
+                "modulos_plan": PLANES_SAAS[nuevo_plan]["modulos"],
+                "limites": PLANES_SAAS[nuevo_plan]["limites"],
+            }
+        )
+
+        return {
+            "ok": True,
+            "mensaje": "Plan tenant actualizado",
+            "tenant": tenant_id,
+            "plan_saas": nuevo_plan,
+            "plan": PLANES_SAAS[nuevo_plan],
+            "planes_anteriores": planes_anteriores,
+            "usuarios_actualizados": len(actualizados),
+            "data": actualizados,
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e)
+            }
+        )
+
+
 # =========================================================
 # SAAS ADMIN - RESET PASSWORD USUARIO
 # =========================================================
