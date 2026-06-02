@@ -4877,5 +4877,339 @@ async def argo_master_export(request: Request):
             }
         )
 
+
+# =========================================================
+# ARGO CONNECT - LAYOUT BUILDER / EXPORTADOR UNIVERSAL
+# =========================================================
+
+ARGO_CONNECT_CATALOGO = [
+    {"campo": "id_operacion", "etiqueta": "ID Operación", "grupo": "Operación"},
+    {"campo": "timestamp_local", "etiqueta": "Fecha / Hora", "grupo": "Operación"},
+    {"campo": "cliente_id", "etiqueta": "Cliente ID / Tenant", "grupo": "Cliente"},
+    {"campo": "cliente_nombre", "etiqueta": "Cliente", "grupo": "Cliente"},
+    {"campo": "proveedor", "etiqueta": "Proveedor", "grupo": "Comercial"},
+    {"campo": "shipment_id", "etiqueta": "Shipment ID", "grupo": "Logística"},
+    {"campo": "tracking", "etiqueta": "Tracking", "grupo": "Logística"},
+    {"campo": "paqueteria", "etiqueta": "Paquetería", "grupo": "Logística"},
+    {"campo": "peso_total", "etiqueta": "Peso total", "grupo": "Logística"},
+    {"campo": "cantidad_bultos", "etiqueta": "Cantidad bultos", "grupo": "Logística"},
+    {"campo": "descripcion", "etiqueta": "Descripción mercancía", "grupo": "Mercancía"},
+    {"campo": "fraccion_sugerida", "etiqueta": "Fracción sugerida", "grupo": "ARGO CLASS"},
+    {"campo": "confianza_fraccion_pct", "etiqueta": "Confianza fracción %", "grupo": "ARGO CLASS"},
+    {"campo": "certeza_final_pct", "etiqueta": "Certeza final %", "grupo": "ARGO CLASS"},
+    {"campo": "score_documental", "etiqueta": "Score documental", "grupo": "ARGO CLASS"},
+    {"campo": "nivel_debida_diligencia", "etiqueta": "Debida diligencia", "grupo": "ARGO CLASS"},
+    {"campo": "riesgo_automatico", "etiqueta": "Riesgo automático", "grupo": "Riesgo"},
+    {"campo": "riesgo_global", "etiqueta": "Riesgo global", "grupo": "Riesgo"},
+    {"campo": "semaforo_operacion", "etiqueta": "Semáforo operación", "grupo": "Riesgo"},
+    {"campo": "estatus_global", "etiqueta": "Estatus global", "grupo": "Riesgo"},
+    {"campo": "alertas_totales", "etiqueta": "Alertas totales", "grupo": "Riesgo"},
+    {"campo": "aprobada", "etiqueta": "Aprobada", "grupo": "Aprobaciones"},
+    {"campo": "aprobada_por", "etiqueta": "Aprobada por", "grupo": "Aprobaciones"},
+    {"campo": "fecha_aprobacion", "etiqueta": "Fecha aprobación", "grupo": "Aprobaciones"},
+    {"campo": "control_output_path", "etiqueta": "Archivo control", "grupo": "Documentos"},
+    {"campo": "document_output_path", "etiqueta": "Archivo documental", "grupo": "Documentos"},
+]
+
+def _argo_connect_store_path():
+    os.makedirs("outputs", exist_ok=True)
+    return os.path.join("outputs", "argo_connect_templates.json")
+
+def _argo_connect_read_templates():
+    import json
+    path = _argo_connect_store_path()
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def _argo_connect_write_templates(items):
+    import json
+    path = _argo_connect_store_path()
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(items, f, ensure_ascii=False, indent=2)
+
+def _argo_connect_get_valor(op, campo):
+    if not isinstance(op, dict):
+        return ""
+
+    if campo in op:
+        v = op.get(campo)
+    elif campo == "tracking":
+        v = op.get("shipment_id") or op.get("tracking")
+    elif campo == "descripcion":
+        v = op.get("descripcion") or op.get("mercancia") or ""
+    else:
+        v = ""
+
+    if isinstance(v, bool):
+        return "SI" if v else "NO"
+    if v is None:
+        return ""
+    return v
+
+def _argo_connect_user(request):
+    email = request.headers.get("x-usuario-email")
+    usuario = obtener_usuario_rbac(email)
+    if not usuario:
+        return None
+    return usuario
+
+def _argo_connect_tenant(usuario):
+    return usuario.get("id_cliente") or "SIN_TENANT"
+
+@app.get("/argo/connect/catalogo")
+async def argo_connect_catalogo(request: Request):
+    try:
+        usuario = _argo_connect_user(request)
+        if not usuario:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+
+        grupos = {}
+        for c in ARGO_CONNECT_CATALOGO:
+            grupos.setdefault(c["grupo"], []).append(c)
+
+        return {
+            "ok": True,
+            "catalogo": ARGO_CONNECT_CATALOGO,
+            "grupos": grupos,
+            "formatos": ["xlsx", "csv", "txt"],
+            "separadores": [
+                {"label": "Coma (,)", "value": ","},
+                {"label": "Punto y coma (;)", "value": ";"},
+                {"label": "Tabulador", "value": "\\t"},
+                {"label": "Pipe (|)", "value": "|"},
+            ],
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+@app.get("/argo/connect/plantillas")
+async def argo_connect_listar_plantillas(request: Request):
+    try:
+        usuario = _argo_connect_user(request)
+        if not usuario:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+
+        rol = str(usuario.get("rol") or "").lower()
+        tenant = _argo_connect_tenant(usuario)
+
+        items = _argo_connect_read_templates()
+        if rol != "master_admin":
+            items = [x for x in items if x.get("tenant_id") == tenant]
+
+        return {"ok": True, "plantillas": items, "total": len(items)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+@app.post("/argo/connect/plantillas")
+async def argo_connect_crear_plantilla(request: Request, payload: dict):
+    try:
+        usuario = _argo_connect_user(request)
+        if not usuario:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+
+        tenant = _argo_connect_tenant(usuario)
+        nombre = str(payload.get("nombre") or "").strip()
+        formato = str(payload.get("formato") or "xlsx").lower().strip()
+        separador = payload.get("separador") or ","
+        columnas = payload.get("columnas") or []
+
+        if not nombre:
+            return {"ok": False, "error": "Nombre requerido"}
+        if formato not in ["xlsx", "csv", "txt"]:
+            return {"ok": False, "error": "Formato inválido"}
+        if not isinstance(columnas, list) or not columnas:
+            return {"ok": False, "error": "Debe seleccionar al menos una columna"}
+
+        import uuid
+        from datetime import datetime
+
+        items = _argo_connect_read_templates()
+        plantilla = {
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant,
+            "nombre": nombre,
+            "descripcion": payload.get("descripcion") or "",
+            "formato": formato,
+            "separador": separador,
+            "columnas": columnas,
+            "created_at": datetime.now().replace(microsecond=0).isoformat(),
+            "created_by": usuario.get("email"),
+        }
+        items.append(plantilla)
+        _argo_connect_write_templates(items)
+
+        return {"ok": True, "plantilla": plantilla}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+@app.patch("/argo/connect/plantillas/{plantilla_id}")
+async def argo_connect_actualizar_plantilla(plantilla_id: str, request: Request, payload: dict):
+    try:
+        usuario = _argo_connect_user(request)
+        if not usuario:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+
+        rol = str(usuario.get("rol") or "").lower()
+        tenant = _argo_connect_tenant(usuario)
+        items = _argo_connect_read_templates()
+
+        encontrada = None
+        for x in items:
+            if x.get("id") == plantilla_id:
+                encontrada = x
+                break
+
+        if not encontrada:
+            return {"ok": False, "error": "Plantilla no encontrada"}
+
+        if rol != "master_admin" and encontrada.get("tenant_id") != tenant:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Acceso denegado"})
+
+        for k in ["nombre", "descripcion", "formato", "separador", "columnas"]:
+            if k in payload:
+                encontrada[k] = payload[k]
+
+        _argo_connect_write_templates(items)
+        return {"ok": True, "plantilla": encontrada}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+@app.delete("/argo/connect/plantillas/{plantilla_id}")
+async def argo_connect_eliminar_plantilla(plantilla_id: str, request: Request):
+    try:
+        usuario = _argo_connect_user(request)
+        if not usuario:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+
+        rol = str(usuario.get("rol") or "").lower()
+        tenant = _argo_connect_tenant(usuario)
+        items = _argo_connect_read_templates()
+
+        nueva = []
+        eliminado = None
+
+        for x in items:
+            if x.get("id") == plantilla_id:
+                if rol != "master_admin" and x.get("tenant_id") != tenant:
+                    return JSONResponse(status_code=403, content={"ok": False, "error": "Acceso denegado"})
+                eliminado = x
+                continue
+            nueva.append(x)
+
+        if not eliminado:
+            return {"ok": False, "error": "Plantilla no encontrada"}
+
+        _argo_connect_write_templates(nueva)
+        return {"ok": True, "eliminado": eliminado}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+@app.post("/argo/connect/exportar")
+async def argo_connect_exportar(request: Request, payload: dict):
+    try:
+        usuario = _argo_connect_user(request)
+        if not usuario:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+
+        rol = str(usuario.get("rol") or "").lower()
+        tenant = _argo_connect_tenant(usuario)
+
+        plantilla_id = payload.get("plantilla_id")
+        operaciones_ids = payload.get("operaciones") or []
+        formato_override = str(payload.get("formato") or "").lower().strip()
+
+        items = _argo_connect_read_templates()
+        plantilla = next((x for x in items if x.get("id") == plantilla_id), None)
+
+        if not plantilla:
+            return {"ok": False, "error": "Plantilla no encontrada"}
+
+        if rol != "master_admin" and plantilla.get("tenant_id") != tenant:
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Acceso denegado"})
+
+        formato = formato_override or str(plantilla.get("formato") or "xlsx").lower()
+        if formato not in ["xlsx", "csv", "txt"]:
+            formato = "xlsx"
+
+        separador = plantilla.get("separador") or ","
+        if separador == "\\t":
+            separador_real = "\t"
+        else:
+            separador_real = separador
+
+        columnas = plantilla.get("columnas") or []
+        if not columnas:
+            return {"ok": False, "error": "Plantilla sin columnas"}
+
+        historial_raw = obtener_historial(tenant if rol != "master_admin" else None)
+        if isinstance(historial_raw, dict):
+            operaciones = historial_raw.get("operaciones") or historial_raw.get("historial") or historial_raw.get("data") or []
+        elif isinstance(historial_raw, list):
+            operaciones = historial_raw
+        else:
+            operaciones = []
+
+        if operaciones_ids:
+            operaciones = [op for op in operaciones if op.get("id_operacion") in operaciones_ids]
+
+        if not operaciones:
+            return {"ok": False, "error": "No hay operaciones para exportar"}
+
+        headers = [c.get("titulo") or c.get("etiqueta") or c.get("campo") for c in columnas]
+        rows = []
+        for op in operaciones:
+            rows.append([_argo_connect_get_valor(op, c.get("campo")) for c in columnas])
+
+        safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", plantilla.get("nombre") or "ARGO_CONNECT").strip("_")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"ARGO_CONNECT_{safe_name}_{timestamp}.{formato}"
+        output_path = os.path.join("outputs", filename)
+        os.makedirs("outputs", exist_ok=True)
+
+        if formato == "xlsx":
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "ARGO Connect"
+            ws.append(headers)
+            for row in rows:
+                ws.append(row)
+
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal="center")
+
+            for col in ws.columns:
+                max_len = 0
+                col_letter = col[0].column_letter
+                for cell in col:
+                    if cell.value is not None:
+                        max_len = max(max_len, len(str(cell.value)))
+                ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 42)
+
+            wb.save(output_path)
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+        else:
+            import csv
+            with open(output_path, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.writer(f, delimiter=separador_real)
+                writer.writerow(headers)
+                writer.writerows(rows)
+
+            media_type = "text/csv" if formato == "csv" else "text/plain"
+
+        return FileResponse(output_path, filename=filename, media_type=media_type)
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
+
 app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
 

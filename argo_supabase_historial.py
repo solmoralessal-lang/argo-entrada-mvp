@@ -56,6 +56,20 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
         "cliente_nombre": cliente_nombre,
 
         "shipment_id": shipment_id,
+        "tracking": entrada.get("tracking") or shipment_id,
+        "proveedor": entrada.get("proveedor") or ocr.get("consolidado", {}).get("proveedor"),
+        "paqueteria": entrada.get("paqueteria") or ocr.get("consolidado", {}).get("paqueteria"),
+        "descripcion": entrada.get("descripcion") or ocr.get("consolidado", {}).get("descripcion"),
+        "peso_total": entrada.get("peso_total") or ocr.get("consolidado", {}).get("peso_total"),
+        "cantidad_bultos": entrada.get("cantidad_bultos") or ocr.get("consolidado", {}).get("cantidad_bultos"),
+
+        "fraccion_sugerida": operacion.get("fraccion_sugerida"),
+        "confianza_fraccion_pct": operacion.get("confianza_fraccion_pct"),
+        "certeza_final_pct": operacion.get("certeza_final_pct"),
+        "score_documental": operacion.get("score_documental"),
+        "nivel_debida_diligencia": operacion.get("nivel_debida_diligencia"),
+        "riesgo_automatico": operacion.get("riesgo_automatico"),
+
         "estatus_global": estatus_global,
         "riesgo_global": ("CRITICO" if (operacion.get("semaforo_operacion") or ocr.get("severidad_maxima")) == "ALTA" else ("CONTINUAR_CON_ALERTA" if (operacion.get("semaforo_operacion") or ocr.get("severidad_maxima")) == "MEDIA" else "CONTINUAR")),
         "semaforo_operacion": operacion.get("semaforo_operacion") or operacion.get("severidad_maxima") or ocr.get("severidad_maxima"),
