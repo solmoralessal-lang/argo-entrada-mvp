@@ -5215,11 +5215,12 @@ async def argo_connect_exportar(request: Request, payload: dict):
         if formato not in ["xlsx", "csv", "txt"]:
             formato = "xlsx"
 
+        orientacion = str(plantilla.get("orientacion") or "horizontal").lower().strip()
+        if orientacion not in ["horizontal", "vertical"]:
+            orientacion = "horizontal"
+
         separador = plantilla.get("separador") or ","
-        if separador == "\\t":
-            separador_real = "\t"
-        else:
-            separador_real = separador
+        separador_real = "\t" if separador == "\\t" else separador
 
         columnas = plantilla.get("columnas") or []
         if not columnas:
@@ -5239,10 +5240,61 @@ async def argo_connect_exportar(request: Request, payload: dict):
         if not operaciones:
             return {"ok": False, "error": "No hay operaciones para exportar"}
 
-        headers = [c.get("titulo") or c.get("etiqueta") or c.get("campo") for c in columnas]
+        def resolver_valor(col, op, idx_op):
+            tipo = str(col.get("tipo") or "campo").lower().strip()
+
+            if tipo == "vacio":
+                return ""
+
+            if tipo == "texto_fijo":
+                return col.get("valor_fijo") or ""
+
+            if tipo == "fecha_actual":
+                return datetime.now().strftime("%Y-%m-%d")
+
+            if tipo == "usuario_actual":
+                return usuario.get("email") or usuario.get("nombre") or ""
+
+            if tipo == "secuencia":
+                inicio = col.get("inicio", 1)
+                try:
+                    inicio = int(inicio)
+                except Exception:
+                    inicio = 1
+                return inicio + idx_op
+
+            if tipo in ["formula", "concatenacion"]:
+                plantilla_formula = str(col.get("valor_fijo") or "")
+                resultado = plantilla_formula
+                for campo_def in ARGO_CONNECT_CATALOGO:
+                    key = campo_def.get("campo")
+                    if not key:
+                        continue
+                    resultado = resultado.replace("{" + key + "}", str(_argo_connect_get_valor(op, key)))
+                resultado = resultado.replace("{secuencia}", str(idx_op + 1))
+                resultado = resultado.replace("{fecha_actual}", datetime.now().strftime("%Y-%m-%d"))
+                resultado = resultado.replace("{usuario_actual}", usuario.get("email") or usuario.get("nombre") or "")
+                return resultado
+
+            return _argo_connect_get_valor(op, col.get("campo"))
+
+        headers = [c.get("titulo") or c.get("etiqueta") or c.get("campo") or c.get("tipo") or "" for c in columnas]
         rows = []
-        for op in operaciones:
-            rows.append([_argo_connect_get_valor(op, c.get("campo")) for c in columnas])
+
+        if orientacion == "vertical":
+            headers = ["Campo", "Valor"]
+            for idx_op, op in enumerate(operaciones):
+                if idx_op:
+                    rows.append(["", ""])
+                rows.append(["OPERACION", op.get("id_operacion") or f"OPERACION_{idx_op + 1}"])
+                for c in columnas:
+                    rows.append([
+                        c.get("titulo") or c.get("etiqueta") or c.get("campo") or c.get("tipo") or "",
+                        resolver_valor(c, op, idx_op),
+                    ])
+        else:
+            for idx_op, op in enumerate(operaciones):
+                rows.append([resolver_valor(c, op, idx_op) for c in columnas])
 
         safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", plantilla.get("nombre") or "ARGO_CONNECT").strip("_")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -5268,7 +5320,7 @@ async def argo_connect_exportar(request: Request, payload: dict):
                 for cell in col:
                     if cell.value is not None:
                         max_len = max(max_len, len(str(cell.value)))
-                ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 42)
+                ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 48)
 
             wb.save(output_path)
             media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
