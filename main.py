@@ -1415,6 +1415,7 @@ PLANES_SAAS = {
             "admin_saas",
             "auditoria",
             "incidencias",
+            "argo_connect",
         ],
         "limites": {
             "operaciones_mes": None,
@@ -1478,6 +1479,7 @@ def obtener_modulos_por_rol(rol: str) -> list:
             "admin_saas",
             "auditoria",
             "incidencias",
+            "argo_connect",
         ]
 
     return base
