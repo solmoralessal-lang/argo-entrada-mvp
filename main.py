@@ -4883,32 +4883,88 @@ async def argo_master_export(request: Request):
 # =========================================================
 
 ARGO_CONNECT_CATALOGO = [
+    # Operación
     {"campo": "id_operacion", "etiqueta": "ID Operación", "grupo": "Operación"},
     {"campo": "timestamp_local", "etiqueta": "Fecha / Hora", "grupo": "Operación"},
+    {"campo": "fecha", "etiqueta": "Fecha", "grupo": "Operación"},
+    {"campo": "hora", "etiqueta": "Hora", "grupo": "Operación"},
+    {"campo": "referencia_operacion", "etiqueta": "Referencia Operación", "grupo": "Operación"},
+    {"campo": "operador", "etiqueta": "Operador", "grupo": "Operación"},
+    {"campo": "supervisor", "etiqueta": "Supervisor", "grupo": "Operación"},
+
+    # Cliente / Comercial
     {"campo": "cliente_id", "etiqueta": "Cliente ID / Tenant", "grupo": "Cliente"},
     {"campo": "cliente_nombre", "etiqueta": "Cliente", "grupo": "Cliente"},
+    {"campo": "cliente", "etiqueta": "Cliente documental", "grupo": "Cliente"},
     {"campo": "proveedor", "etiqueta": "Proveedor", "grupo": "Comercial"},
+    {"campo": "shipper", "etiqueta": "Shipper", "grupo": "Comercial"},
+    {"campo": "consignee", "etiqueta": "Consignee", "grupo": "Comercial"},
+
+    # Logística
     {"campo": "shipment_id", "etiqueta": "Shipment ID", "grupo": "Logística"},
     {"campo": "tracking", "etiqueta": "Tracking", "grupo": "Logística"},
     {"campo": "paqueteria", "etiqueta": "Paquetería", "grupo": "Logística"},
+    {"campo": "bl_awb_no", "etiqueta": "BL / AWB No.", "grupo": "Logística"},
+    {"campo": "tipo_transporte", "etiqueta": "Tipo transporte", "grupo": "Logística"},
+    {"campo": "fecha_embarque", "etiqueta": "Fecha embarque", "grupo": "Logística"},
     {"campo": "peso_total", "etiqueta": "Peso total", "grupo": "Logística"},
+    {"campo": "peso", "etiqueta": "Peso", "grupo": "Logística"},
     {"campo": "cantidad_bultos", "etiqueta": "Cantidad bultos", "grupo": "Logística"},
+    {"campo": "total_bultos", "etiqueta": "Total bultos", "grupo": "Logística"},
+    {"campo": "cantidad", "etiqueta": "Cantidad", "grupo": "Logística"},
+    {"campo": "unidad", "etiqueta": "Unidad", "grupo": "Logística"},
+
+    # Mercancía
     {"campo": "descripcion", "etiqueta": "Descripción mercancía", "grupo": "Mercancía"},
+    {"campo": "descripcion_soporte", "etiqueta": "Descripción soporte", "grupo": "Mercancía"},
+    {"campo": "marca", "etiqueta": "Marca", "grupo": "Mercancía"},
+    {"campo": "modelo", "etiqueta": "Modelo", "grupo": "Mercancía"},
+    {"campo": "serie", "etiqueta": "Serie", "grupo": "Mercancía"},
+    {"campo": "lote", "etiqueta": "Lote", "grupo": "Mercancía"},
+    {"campo": "sku", "etiqueta": "SKU", "grupo": "Mercancía"},
+    {"campo": "numero_parte", "etiqueta": "Número de parte", "grupo": "Mercancía"},
+
+    # Comercio Exterior / Aduana
+    {"campo": "fraccion_tigie", "etiqueta": "Fracción TIGIE", "grupo": "Aduana"},
+    {"campo": "pais_origen", "etiqueta": "País origen", "grupo": "Aduana"},
+    {"campo": "pais_procedencia", "etiqueta": "País procedencia", "grupo": "Aduana"},
+    {"campo": "aduana", "etiqueta": "Aduana", "grupo": "Aduana"},
+    {"campo": "regimen", "etiqueta": "Régimen", "grupo": "Aduana"},
+    {"campo": "incoterm", "etiqueta": "Incoterm", "grupo": "Aduana"},
+    {"campo": "moneda", "etiqueta": "Moneda", "grupo": "Aduana"},
+    {"campo": "valor_aduana", "etiqueta": "Valor aduana", "grupo": "Aduana"},
+    {"campo": "valor_comercial", "etiqueta": "Valor comercial", "grupo": "Aduana"},
+    {"campo": "igi", "etiqueta": "IGI %", "grupo": "Aduana"},
+    {"campo": "iva", "etiqueta": "IVA %", "grupo": "Aduana"},
+    {"campo": "nom", "etiqueta": "NOM", "grupo": "Aduana"},
+    {"campo": "rrna", "etiqueta": "RRNA", "grupo": "Aduana"},
+    {"campo": "nico", "etiqueta": "NICO", "grupo": "Aduana"},
+
+    # Documentos
+    {"campo": "invoice_no", "etiqueta": "Invoice No.", "grupo": "Documentos"},
+    {"campo": "packing_list_no", "etiqueta": "Packing List No.", "grupo": "Documentos"},
+    {"campo": "control_output_path", "etiqueta": "Archivo control", "grupo": "Documentos"},
+    {"campo": "document_output_path", "etiqueta": "Archivo documental", "grupo": "Documentos"},
+
+    # ARGO CLASS
     {"campo": "fraccion_sugerida", "etiqueta": "Fracción sugerida", "grupo": "ARGO CLASS"},
     {"campo": "confianza_fraccion_pct", "etiqueta": "Confianza fracción %", "grupo": "ARGO CLASS"},
     {"campo": "certeza_final_pct", "etiqueta": "Certeza final %", "grupo": "ARGO CLASS"},
     {"campo": "score_documental", "etiqueta": "Score documental", "grupo": "ARGO CLASS"},
+    {"campo": "score_documental_global", "etiqueta": "Score documental global", "grupo": "ARGO CLASS"},
     {"campo": "nivel_debida_diligencia", "etiqueta": "Debida diligencia", "grupo": "ARGO CLASS"},
+    {"campo": "obs_class", "etiqueta": "Observaciones ARGO CLASS", "grupo": "ARGO CLASS"},
+
+    # Riesgo / Aprobaciones
     {"campo": "riesgo_automatico", "etiqueta": "Riesgo automático", "grupo": "Riesgo"},
     {"campo": "riesgo_global", "etiqueta": "Riesgo global", "grupo": "Riesgo"},
     {"campo": "semaforo_operacion", "etiqueta": "Semáforo operación", "grupo": "Riesgo"},
     {"campo": "estatus_global", "etiqueta": "Estatus global", "grupo": "Riesgo"},
     {"campo": "alertas_totales", "etiqueta": "Alertas totales", "grupo": "Riesgo"},
+    {"campo": "obs_control", "etiqueta": "Observaciones ARGO CONTROL", "grupo": "Riesgo"},
     {"campo": "aprobada", "etiqueta": "Aprobada", "grupo": "Aprobaciones"},
     {"campo": "aprobada_por", "etiqueta": "Aprobada por", "grupo": "Aprobaciones"},
     {"campo": "fecha_aprobacion", "etiqueta": "Fecha aprobación", "grupo": "Aprobaciones"},
-    {"campo": "control_output_path", "etiqueta": "Archivo control", "grupo": "Documentos"},
-    {"campo": "document_output_path", "etiqueta": "Archivo documental", "grupo": "Documentos"},
 ]
 
 def _argo_connect_store_path():
@@ -4937,15 +4993,37 @@ def _argo_connect_get_valor(op, campo):
     if not isinstance(op, dict):
         return ""
 
-    if campo in op:
-        v = op.get(campo)
-    elif campo == "tracking":
-        v = op.get("shipment_id") or op.get("tracking")
-    elif campo == "descripcion":
-        v = op.get("descripcion") or op.get("mercancia") or ""
+    aliases = {
+        "tracking": ["tracking", "tracking_number", "shipment_id"],
+        "cliente": ["cliente", "cliente_nombre", "customer", "consignee"],
+        "cliente_nombre": ["cliente_nombre", "cliente", "customer"],
+        "proveedor": ["proveedor", "supplier", "vendor", "shipper"],
+        "descripcion": ["descripcion", "mercancia", "descripcion_soporte", "product_description"],
+        "fraccion_tigie": ["fraccion_tigie", "fraccion_sugerida", "fraccion", "fraccion_arancelaria"],
+        "pais_origen": ["pais_origen", "country_of_origin", "origin"],
+        "peso": ["peso", "peso_total", "weight", "gross_weight"],
+        "cantidad": ["cantidad", "cantidad_bultos", "total_bultos", "qty", "quantity"],
+        "invoice_no": ["invoice_no", "factura", "invoice", "invoice_number"],
+        "packing_list_no": ["packing_list_no", "packing_list", "packing_number"],
+        "bl_awb_no": ["bl_awb_no", "awb", "bl", "bill_of_lading"],
+        "valor_comercial": ["valor_comercial", "valor_aduana", "invoice_value", "commercial_value"],
+        "score_documental_global": ["score_documental_global", "score_documental"],
+        "operador": ["operador", "created_by", "usuario", "usuario_email"],
+    }
+
+    posibles = [campo] + aliases.get(campo, [])
+
+    for key in posibles:
+        if key in op and op.get(key) not in [None, ""]:
+            v = op.get(key)
+            break
     else:
         v = ""
 
+    if isinstance(v, dict):
+        v = v.get("valor") or v.get("value") or v.get("texto") or ""
+    if isinstance(v, list):
+        v = ", ".join(str(x) for x in v if x not in [None, ""])
     if isinstance(v, bool):
         return "SI" if v else "NO"
     if v is None:
