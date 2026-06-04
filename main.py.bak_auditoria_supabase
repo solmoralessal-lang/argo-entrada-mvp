@@ -2145,57 +2145,36 @@ def guardar_auditoria_admin(
     objetivo_email: str = None,
     detalle: dict = None,
 ):
-    from datetime import datetime, timezone
-    import json
-    import os
-
-    evento = {
-        "fecha": datetime.now(timezone.utc).isoformat(),
-        "accion": accion,
-        "actor_email": actor_email,
-        "actor_rol": actor_rol,
-        "tenant": tenant,
-        "objetivo_email": objetivo_email,
-        "detalle": detalle or {},
-    }
-
-    supabase_ok = False
-    supabase_error = None
-
     try:
-        if supabase_config_ok():
-            url = f"{SUPABASE_URL}/rest/v1/argo_auditoria_admin"
-            headers = _headers()
-            headers["Prefer"] = "return=representation"
+        from datetime import datetime, timezone
+        import json
+        import os
 
-            resp = requests.post(
-                url,
-                headers=headers,
-                json=evento,
-                timeout=30
-            )
-
-            if resp.status_code in [200, 201]:
-                supabase_ok = True
-            else:
-                supabase_error = f"{resp.status_code} - {resp.text}"
-
-    except Exception as e:
-        supabase_error = str(e)
-
-    try:
         os.makedirs("logs", exist_ok=True)
+
+        evento = {
+            "fecha": datetime.now(timezone.utc).isoformat(),
+            "accion": accion,
+            "actor_email": actor_email,
+            "actor_rol": actor_rol,
+            "tenant": tenant,
+            "objetivo_email": objetivo_email,
+            "detalle": detalle or {},
+        }
+
         with open("logs/admin_audit.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(evento, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
 
-    return {
-        "ok": supabase_ok,
-        "evento": evento,
-        "storage": "supabase" if supabase_ok else "jsonl_fallback",
-        "supabase_error": supabase_error,
-    }
+        return {
+            "ok": True,
+            "evento": evento
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 
 
 def actualizar_usuario_rbac(email: str, cambios: dict):
@@ -3129,105 +3108,63 @@ async def activity_feed_enterprise(
 
         rol_admin = str(usuario_admin.get("rol") or "").lower()
         tenant_admin = usuario_admin.get("id_cliente")
+
         tenant_final = tenant or tenant_admin
-        limit_final = max(1, min(int(limit or 100), 500))
+
+        path_logs = "logs/admin_audit.jsonl"
+
+        if not os.path.exists(path_logs):
+            return {
+                "ok": True,
+                "logs": [],
+                "resumen": {},
+                "total": 0,
+                "tenant": tenant_final,
+            }
 
         logs = []
-        fuente = "supabase"
 
-        if supabase_config_ok():
-            query = (
-                f"{SUPABASE_URL}/rest/v1/argo_auditoria_admin"
-                f"?select=fecha,accion,actor_email,actor_rol,tenant,objetivo_email,detalle"
-                f"&order=fecha.desc"
-                f"&limit={limit_final}"
-            )
+        with open(path_logs, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    evento = json.loads(line.strip())
+                except Exception:
+                    continue
 
-            if rol_admin != "master_admin":
-                query += f"&tenant=eq.{tenant_admin}"
-            elif tenant_final:
-                query += f"&tenant=eq.{tenant_final}"
+                evento_tenant = evento.get("tenant")
 
-            if accion:
-                query += f"&accion=eq.{accion}"
+                if rol_admin != "master_admin":
+                    if evento_tenant != tenant_admin:
+                        continue
+                elif tenant_final:
+                    if evento_tenant != tenant_final:
+                        continue
 
-            if actor_email:
-                query += f"&actor_email=eq.{actor_email}"
+                if accion and evento.get("accion") != accion:
+                    continue
 
-            resp = requests.get(
-                query,
-                headers=_headers(),
-                timeout=30
-            )
+                if actor_email and evento.get("actor_email") != actor_email:
+                    continue
 
-            if resp.status_code == 200:
-                data = resp.json() or []
-                for evento in data:
-                    detalle = evento.get("detalle") or {}
-                    logs.append({
-                        "fecha": evento.get("fecha"),
-                        "accion": evento.get("accion"),
-                        "actor_email": evento.get("actor_email"),
-                        "actor_rol": evento.get("actor_rol"),
-                        "tenant": evento.get("tenant"),
-                        "objetivo_email": evento.get("objetivo_email"),
-                        "detalle": detalle,
-                        "id_operacion": detalle.get("id_operacion"),
-                        "severidad": detalle.get("severidad"),
-                        "estado_incidencia": detalle.get("estado_incidencia"),
-                        "modulo": (
-                            "DASHBOARD_PRO"
-                            if str(evento.get("accion") or "").startswith("dashboard_pro")
-                            else "ADMIN"
-                        ),
-                    })
+                detalle = evento.get("detalle") or {}
 
-        if not logs:
-            fuente = "jsonl_fallback"
-            path_logs = "logs/admin_audit.jsonl"
-
-            if os.path.exists(path_logs):
-                with open(path_logs, "r", encoding="utf-8") as f:
-                    for line in f:
-                        try:
-                            evento = json.loads(line.strip())
-                        except Exception:
-                            continue
-
-                        evento_tenant = evento.get("tenant")
-
-                        if rol_admin != "master_admin":
-                            if evento_tenant != tenant_admin:
-                                continue
-                        elif tenant_final:
-                            if evento_tenant != tenant_final:
-                                continue
-
-                        if accion and evento.get("accion") != accion:
-                            continue
-
-                        if actor_email and evento.get("actor_email") != actor_email:
-                            continue
-
-                        detalle = evento.get("detalle") or {}
-
-                        logs.append({
-                            "fecha": evento.get("fecha"),
-                            "accion": evento.get("accion"),
-                            "actor_email": evento.get("actor_email"),
-                            "actor_rol": evento.get("actor_rol"),
-                            "tenant": evento.get("tenant"),
-                            "objetivo_email": evento.get("objetivo_email"),
-                            "detalle": detalle,
-                            "id_operacion": detalle.get("id_operacion"),
-                            "severidad": detalle.get("severidad"),
-                            "estado_incidencia": detalle.get("estado_incidencia"),
-                            "modulo": (
-                                "DASHBOARD_PRO"
-                                if str(evento.get("accion") or "").startswith("dashboard_pro")
-                                else "ADMIN"
-                            ),
-                        })
+                logs.append({
+                    "fecha": evento.get("fecha"),
+                    "accion": evento.get("accion"),
+                    "actor_email": evento.get("actor_email"),
+                    "actor_rol": evento.get("actor_rol"),
+                    "tenant": evento.get("tenant"),
+                    "objetivo_email": evento.get("objetivo_email"),
+                    "detalle": detalle,
+                    "id_operacion": detalle.get("id_operacion"),
+                    "severidad": detalle.get("severidad"),
+                    "estado_incidencia": detalle.get("estado_incidencia"),
+                    "modulo": (
+                        "DASHBOARD_PRO"
+                        if str(evento.get("accion") or "").startswith("dashboard_pro")
+                        else "ADMIN"
+                    ),
+                })
 
         logs = sorted(logs, key=lambda x: x.get("fecha") or "", reverse=True)
 
@@ -3239,8 +3176,7 @@ async def activity_feed_enterprise(
             "ok": True,
             "tenant": tenant_final,
             "total": len(logs),
-            "logs": logs[:limit_final],
-            "fuente": fuente,
+            "logs": logs[: max(1, min(limit, 500))],
             "resumen": {
                 "acciones": dict(acciones),
                 "modulos": dict(modulos),

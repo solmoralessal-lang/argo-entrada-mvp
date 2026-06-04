@@ -108,64 +108,13 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
     if any(k in desc for k in [
         "electrónico", "electronico", "electronic", "circuito",
         "pcb", "sensor", "módulo", "modulo", "module",
-        "power supply", "adapter", "charger", "transformer",
-        "control board", "display", "hmi", "plc", "relay", "relevador"
+        "power supply", "adapter", "charger", "transformer"
     ]):
         _add(
             candidatos,
             "8543.70.99",
             "Coincidencia con aparato eléctrico/electrónico con función propia.",
             58
-        )
-
-    # Partes automotrices
-    if any(k in desc for k in [
-        "automotive", "auto part", "car part", "vehicle", "vehículo", "vehiculo",
-        "bracket automotive", "sensor automotriz", "arnes", "arnés", "wiring harness",
-        "bumper", "fascia", "trim", "automotriz"
-    ]):
-        _add(
-            candidatos,
-            "8708.99.99",
-            "Coincidencia con parte/accesorio para vehículo automotor; requiere validar función y vehículo.",
-            62
-        )
-
-    # Empaques / juntas
-    if any(k in desc for k in [
-        "gasket", "seal", "o-ring", "oring", "empaque", "junta", "sello",
-        "rubber seal", "silicone gasket"
-    ]):
-        _add(
-            candidatos,
-            "4016.93.99",
-            "Coincidencia con juntas/empaques/sellos de caucho o material flexible; validar material.",
-            64
-        )
-
-    # Herramientas
-    if any(k in desc for k in [
-        "tool", "herramienta", "drill bit", "broca", "cutter", "blade",
-        "wrench", "llave", "pliers", "pinza", "die", "molde"
-    ]):
-        _add(
-            candidatos,
-            "8207.90.99",
-            "Coincidencia con herramienta/intercambiable o útil; validar uso específico y material.",
-            60
-        )
-
-    # Instrumentos de medición/control
-    if any(k in desc for k in [
-        "gauge", "meter", "caliper", "micrometer", "sensor de presión",
-        "pressure sensor", "thermometer", "termómetro", "instrumento de medición",
-        "measuring instrument", "probe", "transducer"
-    ]):
-        _add(
-            candidatos,
-            "9026.20.99",
-            "Coincidencia con instrumento/aparato de medición o control; validar variable medida.",
-            63
         )
 
     # Maquinaria / bombas / motores
@@ -292,28 +241,6 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
             "requiere validación técnica/legal antes de uso definitivo."
         )
 
-    nom_preliminar = []
-    rrna_preliminar = []
-
-    if top[0].startswith("85"):
-        nom_preliminar.append("Validar NOM eléctrica/electrónica aplicable según tensión, función y uso.")
-        rrna_preliminar.append("Validar cumplimiento de regulaciones eléctricas/electrónicas y etiquetado aplicable.")
-    if top[0].startswith("87"):
-        nom_preliminar.append("Validar NOM/seguridad aplicable a partes automotrices según uso y vehículo.")
-        rrna_preliminar.append("Validar restricciones o permisos aplicables a autopartes según fracción final.")
-    if top[0].startswith("39") or top[0].startswith("40"):
-        nom_preliminar.append("Validar NOM de información comercial/etiquetado si aplica al producto terminado.")
-    if top[0].startswith("38"):
-        nom_preliminar.append("Validar SDS/MSDS y NOM aplicable a químicos si corresponde.")
-        rrna_preliminar.append("Validar restricciones sanitarias, ambientales o permisos por composición química.")
-    if top[0].startswith("63"):
-        nom_preliminar.append("Validar NOM de etiquetado textil/comercial según presentación y uso.")
-
-    if not nom_preliminar:
-        nom_preliminar.append("Sin NOM preliminar automática; validar contra fracción final y uso declarado.")
-    if not rrna_preliminar:
-        rrna_preliminar.append("Sin RRNA preliminar automática; validar contra fracción final y régimen aduanero.")
-
     return {
         "fraccion_sugerida": top[0],
         "descripcion_fraccion": descripcion_fraccion,
@@ -322,7 +249,5 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
             {"fraccion": f, "motivo": m, "score": s}
             for (f, m, s) in candidatos[:5]
         ],
-        "confianza_fraccion_pct": confianza,
-        "nom_preliminar": nom_preliminar,
-        "rrna_preliminar": rrna_preliminar,
+        "confianza_fraccion_pct": confianza
     }

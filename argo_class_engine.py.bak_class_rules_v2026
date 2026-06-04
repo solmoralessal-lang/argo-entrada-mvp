@@ -391,9 +391,7 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
         "descripcion_fraccion": resultado_fraccion["descripcion_fraccion"],
         "metodo_clasificacion": resultado_fraccion["metodo_clasificacion"],
         "confianza_fraccion_pct": resultado_fraccion["confianza_fraccion_pct"],
-        "candidatos": resultado_fraccion["candidatos"],
-        "nom_preliminar": resultado_fraccion.get("nom_preliminar", []),
-        "rrna_preliminar": resultado_fraccion.get("rrna_preliminar", []),
+        "candidatos": resultado_fraccion["candidatos"]
     }
     conf_sector = int(sector_info["confianza_sector_pct"])
     posible_multisector = bool(sector_info["posible_multisector"])
