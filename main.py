@@ -3597,11 +3597,69 @@ async def argo_master_dashboard(
             "activity_feed_total": len(activity_feed),
         }
 
+        activity_feed_operativo = []
+        for evento in activity_feed:
+            nuevo = dict(evento)
+            nuevo["tipo"] = "OPERATIVO"
+            nuevo["accion"] = "OPERACION_APROBADA" if evento.get("aprobada") else "OPERACION_REGISTRADA"
+            nuevo["actor_email"] = None
+            nuevo["objetivo_email"] = None
+            activity_feed_operativo.append(nuevo)
+
+        activity_feed_admin = []
+
+        try:
+            import json
+            import os
+
+            path_logs = "logs/admin_audit.jsonl"
+
+            if os.path.exists(path_logs):
+                with open(path_logs, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            evento = json.loads(line.strip())
+                        except Exception:
+                            continue
+
+                        tenant_evento = evento.get("tenant")
+
+                        if tenant_evento and tenant_evento not in tenants:
+                            continue
+
+                        detalle = evento.get("detalle") or {}
+                        accion_evento = str(evento.get("accion") or "EVENTO_ADMIN")
+
+                        activity_feed_admin.append({
+                            "tipo": "ADMIN",
+                            "accion": accion_evento,
+                            "tenant": tenant_evento or "SIN_TENANT",
+                            "operacion": detalle.get("id_operacion") or accion_evento,
+                            "riesgo": detalle.get("severidad") or "ADMIN",
+                            "aprobada": True,
+                            "fecha": evento.get("fecha") or "N/D",
+                            "actor_email": evento.get("actor_email"),
+                            "actor_rol": evento.get("actor_rol"),
+                            "objetivo_email": evento.get("objetivo_email"),
+                            "detalle": detalle,
+                        })
+
+        except Exception as feed_admin_error:
+            print("WARNING activity_feed_admin:", str(feed_admin_error))
+
+        activity_feed_unificado = sorted(
+            activity_feed_operativo + activity_feed_admin,
+            key=lambda x: str(x.get("fecha") or ""),
+            reverse=True
+        )
+
         resumen_ejecutivo = {
             "riesgo_global": riesgo_global,
             "licencias_por_vencer_total": len(licencias_por_vencer),
             "tenants_en_riesgo_total": len(tenants_en_riesgo),
-            "activity_feed_total": len(activity_feed),
+            "activity_feed_total": len(activity_feed_unificado),
+            "activity_feed_operativo_total": len(activity_feed_operativo),
+            "activity_feed_admin_total": len(activity_feed_admin),
             "revenue_mensual_estimado_usd": revenue_estimado,
             "ticket_promedio_tenant_usd": round(
                 revenue_estimado / max(len(tenants), 1),
@@ -3639,7 +3697,11 @@ async def argo_master_dashboard(
 
             "tenants_en_riesgo": tenants_en_riesgo,
 
-            "activity_feed": activity_feed[-15:],
+            "activity_feed": activity_feed_unificado[:25],
+
+            "activity_feed_operativo": activity_feed_operativo[-15:],
+
+            "activity_feed_admin": activity_feed_admin[:25],
 
             "ultimas_aprobaciones": ultimas_aprobaciones,
 
