@@ -386,14 +386,63 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
     sector = sector_info["sector_detectado"]
     resultado_fraccion = sugerir_fraccion(descripcion, sector)
 
+    confianza_fraccion = int(resultado_fraccion["confianza_fraccion_pct"] or 0)
+
+    dictamen_tecnico = {
+        "titulo": "Dictamen técnico preliminar ARGO CLASS",
+        "fraccion_sugerida": resultado_fraccion["fraccion_sugerida"],
+        "confianza_fraccion_pct": confianza_fraccion,
+        "sector_detectado": sector,
+        "caracter": "PRELIMINAR_OPERATIVO",
+        "sustento": [
+            resultado_fraccion.get("descripcion_fraccion", ""),
+            resultado_fraccion.get("explicacion_clasificacion", ""),
+        ],
+        "evidencia_utilizada": resultado_fraccion.get("evidencia_detectada", []),
+        "reglas_activadas": resultado_fraccion.get("reglas_activadas", []),
+        "nom_preliminar": resultado_fraccion.get("nom_preliminar", []),
+        "rrna_preliminar": resultado_fraccion.get("rrna_preliminar", []),
+        "advertencias": [],
+        "recomendacion": "",
+    }
+
+    if confianza_fraccion >= 75:
+        dictamen_tecnico["nivel_confianza"] = "ALTA"
+        dictamen_tecnico["recomendacion"] = (
+            "La sugerencia puede usarse como base operativa, conservando evidencia documental "
+            "y validación final del clasificador responsable."
+        )
+    elif confianza_fraccion >= 55:
+        dictamen_tecnico["nivel_confianza"] = "MEDIA"
+        dictamen_tecnico["advertencias"].append(
+            "Confianza media: validar ficha técnica, composición, función principal y uso declarado."
+        )
+        dictamen_tecnico["recomendacion"] = (
+            "Usar como candidato principal sujeto a revisión documental y confirmación técnica."
+        )
+    else:
+        dictamen_tecnico["nivel_confianza"] = "BAJA"
+        dictamen_tecnico["advertencias"].append(
+            "Confianza baja: la información disponible no es suficiente para dictamen definitivo."
+        )
+        dictamen_tecnico["recomendacion"] = (
+            "Solicitar ficha técnica, catálogo, material, función principal y uso antes de confirmar."
+        )
+
     clasificacion = {
         "fraccion_sugerida": resultado_fraccion["fraccion_sugerida"],
         "descripcion_fraccion": resultado_fraccion["descripcion_fraccion"],
         "metodo_clasificacion": resultado_fraccion["metodo_clasificacion"],
-        "confianza_fraccion_pct": resultado_fraccion["confianza_fraccion_pct"],
+        "confianza_fraccion_pct": confianza_fraccion,
         "candidatos": resultado_fraccion["candidatos"],
         "nom_preliminar": resultado_fraccion.get("nom_preliminar", []),
         "rrna_preliminar": resultado_fraccion.get("rrna_preliminar", []),
+        "evidencia_detectada": resultado_fraccion.get("evidencia_detectada", []),
+        "reglas_activadas": resultado_fraccion.get("reglas_activadas", []),
+        "factores_positivos": resultado_fraccion.get("factores_positivos", []),
+        "factores_negativos": resultado_fraccion.get("factores_negativos", []),
+        "explicacion_clasificacion": resultado_fraccion.get("explicacion_clasificacion", ""),
+        "dictamen_tecnico": dictamen_tecnico,
     }
     conf_sector = int(sector_info["confianza_sector_pct"])
     posible_multisector = bool(sector_info["posible_multisector"])

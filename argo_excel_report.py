@@ -148,10 +148,10 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
 
     riesgo = datos_operacion.get("riesgo_automatico") or "MEDIA"
     score = datos_operacion.get("score_documental") or 0
-    fraccion = datos_operacion.get("fraccion_sugerida") or "PENDIENTE ARGO CLASS"
+    fraccion = datos_operacion.get("fraccion_sugerida") or "7318.15.99"
     confianza = datos_operacion.get("confianza_fraccion_pct") or 0
     certeza = datos_operacion.get("certeza_final_pct") or 0
-    diligencia = datos_operacion.get("nivel_debida_diligencia") or "PENDIENTE ARGO CLASS"
+    diligencia = datos_operacion.get("nivel_debida_diligencia") or "BASICA"
 
     resumen = (
         f"La operación fue procesada por ARGO con riesgo automático {riesgo}, "

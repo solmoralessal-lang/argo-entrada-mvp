@@ -18,6 +18,18 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
     sec = (sector or "OTRO").strip().upper()
 
     candidatos: List[Tuple[str, str, int]] = []
+    evidencia_detectada = []
+    reglas_activadas = []
+    factores_positivos = []
+    factores_negativos = []
+
+    def marcar(regla: str, palabras: list, impacto: str):
+        hits = [k for k in palabras if k in desc]
+        if hits:
+            reglas_activadas.append(regla)
+            evidencia_detectada.extend(hits[:6])
+            factores_positivos.append(impacto)
+        return bool(hits)
 
     # ----------------------------
     # Reglas por palabras clave
@@ -314,6 +326,40 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
     if not rrna_preliminar:
         rrna_preliminar.append("Sin RRNA preliminar automática; validar contra fracción final y régimen aduanero.")
 
+    # Evidencia explicable ARGO CLASS
+    palabras_clave = [
+        "tornillo", "screw", "bolt", "spring", "plunger", "steel", "metal",
+        "plastic", "nylon", "pcb", "sensor", "module", "automotive", "vehicle",
+        "wiring harness", "gasket", "seal", "o-ring", "gauge", "meter",
+        "pump", "valve", "motor", "chemical", "sds", "msds"
+    ]
+
+    for palabra in palabras_clave:
+        if palabra in desc and palabra not in evidencia_detectada:
+            evidencia_detectada.append(palabra)
+
+    if sec and sec != "OTRO":
+        reglas_activadas.append(f"SECTOR_{sec}")
+        factores_positivos.append(f"Sector detectado/reforzado: {sec}")
+
+    if confianza < 50:
+        factores_negativos.append("Confianza baja por información documental insuficiente.")
+    if top[2] < 60:
+        factores_negativos.append("Coincidencia débil: requiere ficha técnica, material y función principal.")
+    if len(candidatos) > 1:
+        factores_positivos.append(f"Se evaluaron {len(candidatos)} candidatos alternos.")
+
+    evidencia_detectada = list(dict.fromkeys(evidencia_detectada))[:12]
+    reglas_activadas = list(dict.fromkeys(reglas_activadas))[:12]
+    factores_positivos = list(dict.fromkeys(factores_positivos))[:12]
+    factores_negativos = list(dict.fromkeys(factores_negativos))[:12]
+
+    explicacion_clasificacion = (
+        f"ARGO CLASS sugiere {top[0]} con {confianza}% de confianza. "
+        f"La decisión se basa en coincidencias detectadas en la descripción, sector informado y reglas internas v2026. "
+        f"Esta sugerencia debe validarse con documentación técnica y criterio del clasificador."
+    )
+
     return {
         "fraccion_sugerida": top[0],
         "descripcion_fraccion": descripcion_fraccion,
@@ -325,4 +371,9 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
         "confianza_fraccion_pct": confianza,
         "nom_preliminar": nom_preliminar,
         "rrna_preliminar": rrna_preliminar,
+        "evidencia_detectada": evidencia_detectada,
+        "reglas_activadas": reglas_activadas,
+        "factores_positivos": factores_positivos,
+        "factores_negativos": factores_negativos,
+        "explicacion_clasificacion": explicacion_clasificacion,
     }

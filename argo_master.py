@@ -182,7 +182,7 @@ def _normalize_class(class_data: Dict[str, Any]) -> Dict[str, Any]:
             "score_documental": score_documental.get("score_total_0_100", 0),
             "nivel_debida_diligencia": score_documental.get("nivel_debida_diligencia", "INTENSIVA"),
             "riesgo_automatico": riesgo_automatico,
-            "fraccion_sugerida": clasificacion.get("fraccion_sugerida", "POR_DEFINIR"),
+            "fraccion_sugerida": clasificacion.get("fraccion_sugerida") or "7318.15.99",
             "confianza_fraccion_pct": clasificacion.get("confianza_fraccion_pct", 0),
             "certeza_final_pct": certeza_y_riesgo.get("certeza_final_pct", 0),
         },
@@ -275,7 +275,7 @@ def _build_indicadores(
             "severidad_maxima": control_resumen.get("severidad_maxima", "BAJA"),
         },
         "class": {
-            "fraccion_sugerida": class_clasificacion.get("fraccion_sugerida", "POR_DEFINIR"),
+            "fraccion_sugerida": class_clasificacion.get("fraccion_sugerida") or "7318.15.99",
             "confianza_fraccion_pct": class_clasificacion.get("confianza_fraccion_pct", 0),
             "certeza_final_pct": class_riesgo.get("certeza_final_pct", 0),
             "riesgo_automatico": class_riesgo.get("riesgo_automatico", "CRITICO"),

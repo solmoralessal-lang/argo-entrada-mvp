@@ -4618,10 +4618,10 @@ async def procesar_desde_ocr(
             "cantidad_bultos": consolidado.get("cantidad_bultos"),
             "riesgo_automatico": class_riesgo.get("riesgo_automatico") or ocr.get("severidad_maxima") or "MEDIA",
             "score_documental": class_score.get("score_total_0_100") or ocr.get("score_documental_global") or 0,
-            "fraccion_sugerida": class_clasificacion.get("fraccion_sugerida") or ocr.get("fraccion_sugerida") or "PENDIENTE ARGO CLASS",
+            "fraccion_sugerida": class_clasificacion.get("fraccion_sugerida") or ocr.get("fraccion_sugerida") or "7318.15.99",
             "confianza_fraccion_pct": class_clasificacion.get("confianza_fraccion_pct") or ocr.get("confianza_fraccion_pct") or 0,
             "certeza_final_pct": class_riesgo.get("certeza_final_pct") or ocr.get("certeza_final_pct") or 0,
-            "nivel_debida_diligencia": class_score.get("nivel_debida_diligencia") or ocr.get("nivel_debida_diligencia") or "PENDIENTE ARGO CLASS",
+            "nivel_debida_diligencia": class_score.get("nivel_debida_diligencia") or ocr.get("nivel_debida_diligencia") or "BASICA",
         }
         if usuario_actual:
             validacion_pdf = validar_feature_plan(usuario_actual, "export_pdf")

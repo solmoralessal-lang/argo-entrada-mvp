@@ -5,3 +5,4 @@ python-multipart
 requests
 openai>=1.0.0
 Pillow
+stripe>=10.0.0
