@@ -174,20 +174,114 @@ ROUTING_V1 = {
     ]
 }
 def argo_control_validar(payload_entrada: dict) -> dict:
+    entrada = payload_entrada.get("entrada", {}) or {}
+
+    def normalizar(v):
+        return str(v or "").strip()
+
+    def es_no_legible(v):
+        t = normalizar(v).lower()
+        return t in ["", "no legible", "n/a", "na", "none", "null", "sin dato", "sin datos"]
+
+    campos_operativos = [
+        ("cantidad", "Cantidad"),
+        ("peso_total", "Peso total"),
+        ("descripcion", "Descripción"),
+        ("marca", "Marca"),
+        ("modelo", "Modelo"),
+        ("no_parte", "No. parte"),
+        ("no_lote", "Lote"),
+        ("no_serie", "Serie"),
+        ("pais_origen", "País origen"),
+    ]
+
+    validaciones = []
+    verificados = 0
+    no_verificables = 0
+
+    for campo, etiqueta in campos_operativos:
+        valor = entrada.get(campo)
+
+        if es_no_legible(valor):
+            estado = "NO_VERIFICABLE"
+            resultado = "⚠ No verificable"
+            severidad = "MEDIA"
+            no_verificables += 1
+        else:
+            estado = "DISPONIBLE"
+            resultado = "✓ Disponible para validación"
+            severidad = "BAJA"
+            verificados += 1
+
+        validaciones.append({
+            "campo": campo,
+            "etiqueta": etiqueta,
+            "valor_documental": valor,
+            "estado": estado,
+            "resultado": resultado,
+            "severidad": severidad,
+        })
+
+    total = len(campos_operativos)
+    cobertura_pct = round((verificados / total) * 100, 2) if total else 0
+
+    alertas = []
+
+    for v in validaciones:
+        if v["estado"] == "NO_VERIFICABLE":
+            alertas.append({
+                "tipo": "DATO_NO_VERIFICABLE",
+                "campo": v["campo"],
+                "mensaje": f"{v['etiqueta']} no disponible o no legible para validación operativa.",
+                "severidad": v["severidad"],
+            })
+
+    if cobertura_pct >= 85:
+        estado = "OK"
+        semaforo = "VERDE"
+        icono = "🟢"
+        severidad_maxima = "NINGUNA"
+        dictamen_operativo = "Información suficiente para continuar operación."
+    elif cobertura_pct >= 55:
+        estado = "ADVERTENCIA"
+        semaforo = "AMARILLO"
+        icono = "🟡"
+        severidad_maxima = "MEDIA"
+        dictamen_operativo = "Operación puede continuar con datos no verificables documentados."
+    else:
+        estado = "REVISION"
+        semaforo = "ROJO"
+        icono = "🔴"
+        severidad_maxima = "ALTA"
+        dictamen_operativo = "Información limitada; requiere revisión operativa antes de continuar."
+
     return {
-        "version": "1.0",
+        "version": "2.0",
         "modulo": "ARGO_CONTROL",
-        "estado": "OK",
-        "severidad_maxima": "NINGUNA",
-        "conteo": {"alertas": 0},
-        "alertas": [],
+        "estado": estado,
+        "semaforo": semaforo,
+        "icono": icono,
+        "severidad_maxima": severidad_maxima,
+        "dictamen_operativo": dictamen_operativo,
+        "cobertura_validacion_pct": cobertura_pct,
+        "conteo": {
+            "campos_totales": total,
+            "campos_disponibles": verificados,
+            "campos_no_verificables": no_verificables,
+            "alertas": len(alertas),
+        },
+        "validaciones_operativas": validaciones,
+        "alertas": alertas,
         "entrada_ref": {
             "version": payload_entrada.get("version"),
             "modulo": payload_entrada.get("modulo"),
-            "shipment_id": payload_entrada.get("entrada", {}).get("shipment_id"),
-            "tracking": payload_entrada.get("entrada", {}).get("tracking")
+            "shipment_id": entrada.get("shipment_id"),
+            "tracking": entrada.get("tracking"),
+            "cliente": entrada.get("cliente"),
+            "proveedor": entrada.get("proveedor"),
         }
     }
+
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
 
@@ -4607,6 +4701,27 @@ async def procesar_desde_ocr(
             },
         }
 
+        control_info = (
+            operacion.get("control")
+            or ocr.get("control")
+            or {}
+        )
+
+        resumen_operativo = {
+            "semaforo": control_info.get("semaforo") or control_info.get("estado") or "SIN_CONTROL",
+            "icono": control_info.get("icono") or "",
+            "estado": control_info.get("estado") or "SIN_CONTROL",
+            "cobertura_validacion_pct": control_info.get("cobertura_validacion_pct", 0),
+            "dictamen_operativo": control_info.get("dictamen_operativo") or "Sin dictamen operativo.",
+            "campos_totales": (control_info.get("conteo") or {}).get("campos_totales", 0),
+            "campos_disponibles": (control_info.get("conteo") or {}).get("campos_disponibles", 0),
+            "campos_no_verificables": (control_info.get("conteo") or {}).get("campos_no_verificables", 0),
+            "alertas": control_info.get("alertas", []),
+            "validaciones_operativas": control_info.get("validaciones_operativas", []),
+        }
+
+        operacion["resumen_operativo"] = resumen_operativo
+
         data_reporte = {
             "cliente": consolidado.get("cliente"),
             "shipment_id": tracking,
@@ -4616,12 +4731,15 @@ async def procesar_desde_ocr(
             "descripcion": consolidado.get("descripcion"),
             "peso_total": consolidado.get("peso_total"),
             "cantidad_bultos": consolidado.get("cantidad_bultos"),
-            "riesgo_automatico": class_riesgo.get("riesgo_automatico") or ocr.get("severidad_maxima") or "MEDIA",
+            "riesgo_automatico": class_riesgo.get("riesgo_automatico") or resumen_operativo.get("estado") or ocr.get("severidad_maxima") or "MEDIA",
             "score_documental": class_score.get("score_total_0_100") or ocr.get("score_documental_global") or 0,
             "fraccion_sugerida": class_clasificacion.get("fraccion_sugerida") or ocr.get("fraccion_sugerida") or "7318.15.99",
             "confianza_fraccion_pct": class_clasificacion.get("confianza_fraccion_pct") or ocr.get("confianza_fraccion_pct") or 0,
             "certeza_final_pct": class_riesgo.get("certeza_final_pct") or ocr.get("certeza_final_pct") or 0,
             "nivel_debida_diligencia": class_score.get("nivel_debida_diligencia") or ocr.get("nivel_debida_diligencia") or "BASICA",
+            "semaforo_operativo": resumen_operativo.get("semaforo"),
+            "cobertura_validacion_pct": resumen_operativo.get("cobertura_validacion_pct"),
+            "dictamen_operativo": resumen_operativo.get("dictamen_operativo"),
         }
         if usuario_actual:
             validacion_pdf = validar_feature_plan(usuario_actual, "export_pdf")
@@ -4669,6 +4787,7 @@ async def procesar_desde_ocr(
             "mensaje": "Operación guardada desde OCR",
             "debug_guardado": guardado,
             "operacion": guardado,
+            "resumen_operativo": resumen_operativo,
             "reporte_ejecutivo": {
                 "archivo": nombre_reporte,
                 "descarga": f"/descargar/{nombre_reporte}"
