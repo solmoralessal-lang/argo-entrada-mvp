@@ -50,29 +50,42 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
 
     payload = {
         "id_operacion": operacion.get("id_operacion"),
-        "timestamp_local": datetime.now().replace(microsecond=0).isoformat(),
+        "timestamp_local": (
+            operacion.get("timestamp_local")
+            or operacion.get("fecha")
+            or datetime.now().replace(microsecond=0).isoformat()
+        ),
 
         "cliente_id": operacion.get("cliente_id") or cliente_nombre,
         "cliente_nombre": cliente_nombre,
 
         "shipment_id": shipment_id,
-        "tracking": entrada.get("tracking") or shipment_id,
-        "proveedor": entrada.get("proveedor") or ocr.get("consolidado", {}).get("proveedor"),
-        "paqueteria": entrada.get("paqueteria") or ocr.get("consolidado", {}).get("paqueteria"),
-        "descripcion": entrada.get("descripcion") or ocr.get("consolidado", {}).get("descripcion"),
-        "peso_total": entrada.get("peso_total") or ocr.get("consolidado", {}).get("peso_total"),
-        "cantidad_bultos": entrada.get("cantidad_bultos") or ocr.get("consolidado", {}).get("cantidad_bultos"),
-
-        "fraccion_sugerida": operacion.get("fraccion_sugerida"),
-        "confianza_fraccion_pct": operacion.get("confianza_fraccion_pct"),
-        "certeza_final_pct": operacion.get("certeza_final_pct"),
-        "score_documental": operacion.get("score_documental"),
-        "nivel_debida_diligencia": operacion.get("nivel_debida_diligencia"),
-        "riesgo_automatico": operacion.get("riesgo_automatico"),
 
         "estatus_global": estatus_global,
-        "riesgo_global": ("CRITICO" if (operacion.get("semaforo_operacion") or ocr.get("severidad_maxima")) == "ALTA" else ("CONTINUAR_CON_ALERTA" if (operacion.get("semaforo_operacion") or ocr.get("severidad_maxima")) == "MEDIA" else "CONTINUAR")),
-        "semaforo_operacion": operacion.get("semaforo_operacion") or operacion.get("severidad_maxima") or ocr.get("severidad_maxima"),
+        "riesgo_global": (
+            "CRITICO"
+            if (
+                operacion.get("semaforo_operacion")
+                or ocr.get("severidad_maxima")
+            ) == "ALTA"
+            else (
+                "CONTINUAR_CON_ALERTA"
+                if (
+                    operacion.get("semaforo_operacion")
+                    or ocr.get("severidad_maxima")
+                ) == "MEDIA"
+                else "CONTINUAR"
+            )
+        ),
+        "score_documental_global": (
+            operacion.get("score_documental_global")
+            or operacion.get("score_documental")
+        ),
+        "semaforo_operacion": (
+            operacion.get("semaforo_operacion")
+            or operacion.get("severidad_maxima")
+            or ocr.get("severidad_maxima")
+        ),
 
         "alertas_totales": (
             generacion.get("conteo", {}).get("alertas")
@@ -81,9 +94,13 @@ def guardar_operacion_supabase(operacion: Dict[str, Any]) -> Dict[str, Any]:
         ),
 
         "control_output_path": generacion.get("ruta_archivo"),
+        "class_output_path": operacion.get("class_output_path"),
         "document_output_path": generacion.get("descarga"),
+        "master_output_path": operacion.get("master_output_path"),
 
         "aprobada": False,
+
+        "payload_operacion": operacion,
     }
 
     response = requests.post(
@@ -128,12 +145,28 @@ def obtener_historial_supabase(cliente_id: Optional[str] = None) -> List[Dict[st
     if not isinstance(data, list):
         return []
 
-    for r in data:
-        r["aprobada"] = bool(r.get("aprobada"))
-        r["aprobada_por"] = r.get("aprobada_por") or ""
-        r["fecha_aprobacion"] = r.get("fecha_aprobacion") or ""
+    registros_normalizados = []
 
-    return data
+    for r in data:
+        payload_operacion = r.get("payload_operacion") or {}
+
+        if isinstance(payload_operacion, dict):
+            combinado = {
+                **payload_operacion,
+                **r,
+            }
+        else:
+            combinado = dict(r)
+
+        combinado["aprobada"] = bool(combinado.get("aprobada"))
+        combinado["aprobada_por"] = combinado.get("aprobada_por") or ""
+        combinado["fecha_aprobacion"] = (
+            combinado.get("fecha_aprobacion") or ""
+        )
+
+        registros_normalizados.append(combinado)
+
+    return registros_normalizados
 
 
 # =========================================================
