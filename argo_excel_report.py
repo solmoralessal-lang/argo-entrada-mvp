@@ -44,7 +44,7 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     ws.column_dimensions["E"].width = 22
     ws.column_dimensions["F"].width = 32
 
-    for row in range(1, 45):
+    for row in range(1, 70):
         ws.row_dimensions[row].height = 24
 
     # =========================
@@ -134,52 +134,269 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
     ws["F12"].border = borde
 
     # =========================
-    # RESUMEN EJECUTIVO
+    # VALIDACIÓN OPERACIONAL
+    # Prioridad ejecutiva y comercial del reporte
     # =========================
+    semaforo_operativo = (
+        datos_operacion.get("semaforo_operativo") or "SIN CONTROL"
+    )
+    icono_operativo = datos_operacion.get("icono_operativo") or ""
+    cobertura = datos_operacion.get("cobertura_validacion_pct") or 0
+    dictamen = (
+        datos_operacion.get("dictamen_operativo")
+        or "Sin dictamen operativo."
+    )
+    campos_totales = datos_operacion.get("campos_totales") or 0
+    campos_disponibles = datos_operacion.get("campos_disponibles") or 0
+    campos_no_verificables = (
+        datos_operacion.get("campos_no_verificables") or 0
+    )
+    validaciones = (
+        datos_operacion.get("validaciones_operativas") or []
+    )
+
+    semaforo_texto = str(semaforo_operativo).upper()
+
+    color_semaforo = {
+        "VERDE": "2E7D32",
+        "AMARILLO": "F9A825",
+        "ROJO": "C62828",
+    }.get(semaforo_texto, "666666")
+
+    color_texto_semaforo = (
+        "000000" if semaforo_texto == "AMARILLO" else "FFFFFF"
+    )
+
+    borde_estado = Border(
+        left=Side(style="medium", color="333333"),
+        right=Side(style="medium", color="333333"),
+        top=Side(style="medium", color="333333"),
+        bottom=Side(style="medium", color="333333"),
+    )
+
     ws.merge_cells("B22:F22")
-    ws["B22"] = "RESUMEN EJECUTIVO"
-    ws["B22"].font = Font(size=14, bold=True, color=blanco)
+    ws["B22"] = "VALIDACIÓN OPERACIONAL"
+    ws["B22"].font = Font(size=15, bold=True, color=blanco)
     ws["B22"].fill = PatternFill(
         start_color=azul_oscuro,
         end_color=azul_oscuro,
         fill_type="solid"
     )
-    ws["B22"].alignment = Alignment(horizontal="center", vertical="center")
-
-    riesgo = datos_operacion.get("riesgo_automatico") or "MEDIA"
-    score = datos_operacion.get("score_documental") or 0
-    fraccion = datos_operacion.get("fraccion_sugerida") or "7318.15.99"
-    confianza = datos_operacion.get("confianza_fraccion_pct") or 0
-    certeza = datos_operacion.get("certeza_final_pct") or 0
-    diligencia = datos_operacion.get("nivel_debida_diligencia") or "BASICA"
-
-    resumen = (
-        f"La operación fue procesada por ARGO con riesgo automático {riesgo}, "
-        f"score documental {score}, fracción sugerida {fraccion}, "
-        f"confianza de clasificación {confianza}% y certeza final {certeza}%. "
-        f"Nivel de debida diligencia recomendado: {diligencia}."
+    ws["B22"].alignment = Alignment(
+        horizontal="center",
+        vertical="center"
     )
 
-    ws.merge_cells("B23:F25")
-    ws["B23"] = resumen
-    ws["B23"].font = Font(size=11, color="000000")
-    ws["B23"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws["B23"].border = borde
+    ws.merge_cells("B23:C26")
+    ws["B23"] = (
+        f"ESTADO OPERATIVO\n"
+        f"{icono_operativo} {semaforo_texto}"
+    )
+    ws["B23"].font = Font(
+        size=18,
+        bold=True,
+        color=color_texto_semaforo
+    )
+    ws["B23"].fill = PatternFill(
+        start_color=color_semaforo,
+        end_color=color_semaforo,
+        fill_type="solid"
+    )
+    ws["B23"].alignment = Alignment(
+        horizontal="center",
+        vertical="center",
+        wrap_text=True
+    )
+
+    for fila_estado in range(23, 27):
+        for columna_estado in ["B", "C"]:
+            ws[f"{columna_estado}{fila_estado}"].border = borde_estado
+
+    indicadores_operativos = [
+        ("Cobertura de validación", f"{cobertura}%"),
+        ("Campos disponibles", campos_disponibles),
+        ("Campos no verificables", campos_no_verificables),
+        ("Campos evaluados", campos_totales),
+    ]
+
+    fila_indicador = 23
+
+    for campo, valor in indicadores_operativos:
+        ws[f"E{fila_indicador}"] = campo
+        ws[f"E{fila_indicador}"].font = Font(size=10, bold=True)
+        ws[f"E{fila_indicador}"].fill = PatternFill(
+            start_color=gris_claro,
+            end_color=gris_claro,
+            fill_type="solid"
+        )
+        ws[f"E{fila_indicador}"].border = borde
+        ws[f"E{fila_indicador}"].alignment = Alignment(
+            vertical="center",
+            wrap_text=True
+        )
+
+        ws[f"F{fila_indicador}"] = str(valor)
+        ws[f"F{fila_indicador}"].font = Font(size=11, bold=True)
+        ws[f"F{fila_indicador}"].border = borde
+        ws[f"F{fila_indicador}"].alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True
+        )
+
+        fila_indicador += 1
+
+    ws.merge_cells("B28:F30")
+    ws["B28"] = f"DICTAMEN OPERATIVO\n\n{dictamen}"
+    ws["B28"].font = Font(size=12, bold=True, color="000000")
+    ws["B28"].alignment = Alignment(
+        wrap_text=True,
+        vertical="center"
+    )
+    ws["B28"].border = borde
 
     # =========================
-    # MATRIZ DOCUMENTAL Y CLASS
+    # TABLA DE VALIDACIONES
     # =========================
-    ws.merge_cells("B27:F27")
-    ws["B27"] = "MATRIZ DOCUMENTAL Y CLASIFICACIÓN"
-    ws["B27"].font = Font(size=14, bold=True, color=blanco)
-    ws["B27"].fill = PatternFill(
+    ws.merge_cells("B32:F32")
+    ws["B32"] = "DETALLE DE VALIDACIONES OPERATIVAS"
+    ws["B32"].font = Font(size=13, bold=True, color=blanco)
+    ws["B32"].fill = PatternFill(
         start_color=azul_oscuro,
         end_color=azul_oscuro,
         fill_type="solid"
     )
-    ws["B27"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["B32"].alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
-    matriz = [
+    encabezados = [
+        ("B33", "Campo"),
+        ("C33", "Valor documental"),
+        ("E33", "Estado"),
+        ("F33", "Severidad"),
+    ]
+
+    for celda, titulo in encabezados:
+        ws[celda] = titulo
+        ws[celda].font = Font(size=10, bold=True)
+        ws[celda].fill = PatternFill(
+            start_color=gris_claro,
+            end_color=gris_claro,
+            fill_type="solid"
+        )
+        ws[celda].border = borde
+        ws[celda].alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
+
+    fila_validacion = 34
+
+    for item in validaciones[:12]:
+        etiqueta = (
+            item.get("etiqueta")
+            or item.get("campo")
+            or "N/D"
+        )
+        valor_documental = item.get("valor_documental")
+        estado = item.get("estado") or ""
+        resultado = (
+            item.get("resultado")
+            or estado
+            or "N/D"
+        )
+        severidad = item.get("severidad") or "N/D"
+
+        if estado == "DISPONIBLE":
+            estado_impresion = "OK - DISPONIBLE"
+        elif estado == "NO_VERIFICABLE":
+            estado_impresion = "REVISAR - NO VERIFICABLE"
+        else:
+            estado_impresion = resultado
+
+        ws[f"B{fila_validacion}"] = etiqueta
+        ws[f"C{fila_validacion}"] = (
+            str(valor_documental)
+            if valor_documental not in [None, ""]
+            else "N/D"
+        )
+        ws[f"E{fila_validacion}"] = estado_impresion
+        ws[f"F{fila_validacion}"] = severidad
+
+        if estado == "NO_VERIFICABLE":
+            ws[f"E{fila_validacion}"].font = Font(
+                size=10,
+                bold=True
+            )
+        else:
+            ws[f"E{fila_validacion}"].font = Font(size=10)
+
+        for columna in ["B", "C", "E", "F"]:
+            ws[f"{columna}{fila_validacion}"].border = borde
+            ws[f"{columna}{fila_validacion}"].alignment = Alignment(
+                wrap_text=True,
+                vertical="center"
+            )
+
+            if columna != "E":
+                ws[f"{columna}{fila_validacion}"].font = Font(
+                    size=10
+                )
+
+        fila_validacion += 1
+
+    # =========================
+    # ANÁLISIS DOCUMENTAL
+    # Información complementaria, no protagonista
+    # =========================
+    riesgo = datos_operacion.get("riesgo_automatico") or "MEDIA"
+    score = datos_operacion.get("score_documental") or 0
+    fraccion = (
+        datos_operacion.get("fraccion_sugerida")
+        or "7318.15.99"
+    )
+    confianza = (
+        datos_operacion.get("confianza_fraccion_pct") or 0
+    )
+    certeza = datos_operacion.get("certeza_final_pct") or 0
+    diligencia = (
+        datos_operacion.get("nivel_debida_diligencia")
+        or "BASICA"
+    )
+
+    ws.merge_cells("B47:F47")
+    ws["B47"] = "ANÁLISIS DOCUMENTAL Y CLASIFICACIÓN"
+    ws["B47"].font = Font(size=13, bold=True, color=blanco)
+    ws["B47"].fill = PatternFill(
+        start_color=azul_oscuro,
+        end_color=azul_oscuro,
+        fill_type="solid"
+    )
+    ws["B47"].alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
+
+    resumen_documental = (
+        f"ARGO identificó riesgo automático {riesgo}, "
+        f"score documental {score}, fracción sugerida {fraccion}, "
+        f"confianza de clasificación {confianza}% y certeza final "
+        f"{certeza}%. Nivel de debida diligencia recomendado: "
+        f"{diligencia}."
+    )
+
+    ws.merge_cells("B48:F50")
+    ws["B48"] = resumen_documental
+    ws["B48"].font = Font(size=10, color="000000")
+    ws["B48"].alignment = Alignment(
+        wrap_text=True,
+        vertical="center"
+    )
+    ws["B48"].border = borde
+
+    matriz_documental = [
         ("Riesgo automático", riesgo),
         ("Score documental", score),
         ("Fracción sugerida", fraccion),
@@ -188,11 +405,11 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
         ("Debida diligencia", diligencia),
     ]
 
-    fila_matriz = 29
+    fila_matriz = 52
 
-    for campo, valor in matriz:
+    for campo, valor in matriz_documental:
         ws[f"B{fila_matriz}"] = campo
-        ws[f"B{fila_matriz}"].font = Font(size=11, bold=True)
+        ws[f"B{fila_matriz}"].font = Font(size=10, bold=True)
         ws[f"B{fila_matriz}"].fill = PatternFill(
             start_color=gris_claro,
             end_color=gris_claro,
@@ -201,33 +418,53 @@ def generar_reporte_ejecutivo(plantilla, datos_operacion, carpeta_salida):
         ws[f"B{fila_matriz}"].border = borde
 
         ws[f"C{fila_matriz}"] = str(valor)
-        ws[f"C{fila_matriz}"].font = Font(size=11)
+        ws[f"C{fila_matriz}"].font = Font(size=10)
         ws[f"C{fila_matriz}"].border = borde
-        ws[f"C{fila_matriz}"].alignment = Alignment(wrap_text=True)
+        ws[f"C{fila_matriz}"].alignment = Alignment(
+            wrap_text=True
+        )
 
         fila_matriz += 1
 
     # =========================
     # ADVERTENCIA OPERATIVA
     # =========================
-    ws.merge_cells("B37:F40")
-    ws["B37"] = (
-        "Advertencia: ARGO procesa información con base en los documentos e imágenes "
-        "proporcionados por el operador. La captura, legibilidad y validez documental "
-        "son responsabilidad del usuario operativo. La clasificación sugerida debe ser "
-        "validada por personal autorizado antes de su uso definitivo."
+    ws.merge_cells("B60:F63")
+    ws["B60"] = (
+        "Advertencia: ARGO procesa información con base en los "
+        "documentos e imágenes proporcionados por el operador. "
+        "La captura, legibilidad y validez documental son "
+        "responsabilidad del usuario operativo. La clasificación "
+        "sugerida debe ser validada por personal autorizado antes "
+        "de su uso definitivo."
     )
-    ws["B37"].font = Font(size=10, italic=True, color="666666")
-    ws["B37"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws["B37"].border = borde
+    ws["B60"].font = Font(
+        size=9,
+        italic=True,
+        color="555555"
+    )
+    ws["B60"].alignment = Alignment(
+        wrap_text=True,
+        vertical="center"
+    )
+    ws["B60"].border = borde
 
     # =========================
     # PIE
     # =========================
-    ws.merge_cells("B42:F43")
-    ws["B42"] = "Reporte generado automáticamente por ARGO v2026"
-    ws["B42"].font = Font(size=10, italic=True, color="666666")
-    ws["B42"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.merge_cells("B65:F66")
+    ws["B65"] = (
+        "Reporte generado automáticamente por ARGO v2026"
+    )
+    ws["B65"].font = Font(
+        size=10,
+        italic=True,
+        color="666666"
+    )
+    ws["B65"].alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     wb.save(ruta_salida)
 

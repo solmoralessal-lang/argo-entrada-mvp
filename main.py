@@ -3723,6 +3723,393 @@ async def argo_master_dashboard(
 
             riesgos_map[riesgo_op] += 1
 
+        # =====================================================
+        # KPIS DE VALIDACION OPERACIONAL
+        # =====================================================
+
+        coberturas_validacion = []
+        operaciones_verdes = 0
+        operaciones_amarillas = 0
+        operaciones_rojas = 0
+        operaciones_sin_control = 0
+        campos_no_verificables_total = 0
+
+        cobertura_por_tenant_acumulada = {}
+
+        for op in historial:
+
+            if not isinstance(op, dict):
+                continue
+
+            resumen_op = (
+                op.get("resumen_operativo")
+                or op.get("control")
+                or {}
+            )
+
+            if not isinstance(resumen_op, dict):
+                resumen_op = {}
+
+            semaforo_op = str(
+                resumen_op.get("semaforo")
+                or resumen_op.get("estado")
+                or "SIN_CONTROL"
+            ).upper()
+
+            cobertura_op = resumen_op.get("cobertura_validacion_pct")
+
+            try:
+                cobertura_num = float(cobertura_op)
+            except (TypeError, ValueError):
+                cobertura_num = None
+
+            if cobertura_num is not None:
+                coberturas_validacion.append(cobertura_num)
+
+            if semaforo_op == "VERDE":
+                operaciones_verdes += 1
+            elif semaforo_op == "AMARILLO":
+                operaciones_amarillas += 1
+            elif semaforo_op == "ROJO":
+                operaciones_rojas += 1
+            else:
+                operaciones_sin_control += 1
+
+            conteo_op = resumen_op.get("conteo") or {}
+
+            campos_no_verificables = (
+                resumen_op.get("campos_no_verificables")
+                if resumen_op.get("campos_no_verificables") is not None
+                else conteo_op.get("campos_no_verificables", 0)
+            )
+
+            try:
+                campos_no_verificables_total += int(
+                    campos_no_verificables or 0
+                )
+            except (TypeError, ValueError):
+                pass
+
+            tenant_op = (
+                op.get("cliente_id")
+                or op.get("id_cliente")
+                or "SIN_TENANT"
+            )
+
+            if tenant_op not in cobertura_por_tenant_acumulada:
+                cobertura_por_tenant_acumulada[tenant_op] = {
+                    "tenant": tenant_op,
+                    "suma_cobertura": 0.0,
+                    "operaciones_con_control": 0,
+                    "operaciones_verdes": 0,
+                    "operaciones_amarillas": 0,
+                    "operaciones_rojas": 0,
+                    "campos_no_verificables": 0,
+                }
+
+            tenant_kpi = cobertura_por_tenant_acumulada[tenant_op]
+
+            if cobertura_num is not None:
+                tenant_kpi["suma_cobertura"] += cobertura_num
+                tenant_kpi["operaciones_con_control"] += 1
+
+            if semaforo_op == "VERDE":
+                tenant_kpi["operaciones_verdes"] += 1
+            elif semaforo_op == "AMARILLO":
+                tenant_kpi["operaciones_amarillas"] += 1
+            elif semaforo_op == "ROJO":
+                tenant_kpi["operaciones_rojas"] += 1
+
+            try:
+                tenant_kpi["campos_no_verificables"] += int(
+                    campos_no_verificables or 0
+                )
+            except (TypeError, ValueError):
+                pass
+
+        cobertura_promedio_validacion = round(
+            sum(coberturas_validacion) / len(coberturas_validacion),
+            2
+        ) if coberturas_validacion else 0
+
+        cobertura_por_tenant = []
+
+        for tenant_kpi in cobertura_por_tenant_acumulada.values():
+
+            operaciones_con_control = tenant_kpi.get(
+                "operaciones_con_control",
+                0
+            )
+
+            cobertura_promedio_tenant = round(
+                tenant_kpi.get("suma_cobertura", 0)
+                / max(operaciones_con_control, 1),
+                2
+            ) if operaciones_con_control else 0
+
+            cobertura_por_tenant.append({
+                "tenant": tenant_kpi.get("tenant"),
+                "cobertura_promedio_validacion": cobertura_promedio_tenant,
+                "operaciones_con_control": operaciones_con_control,
+                "operaciones_verdes": tenant_kpi.get(
+                    "operaciones_verdes",
+                    0
+                ),
+                "operaciones_amarillas": tenant_kpi.get(
+                    "operaciones_amarillas",
+                    0
+                ),
+                "operaciones_rojas": tenant_kpi.get(
+                    "operaciones_rojas",
+                    0
+                ),
+                "campos_no_verificables": tenant_kpi.get(
+                    "campos_no_verificables",
+                    0
+                ),
+            })
+
+        cobertura_por_tenant = sorted(
+            cobertura_por_tenant,
+            key=lambda x: x.get(
+                "cobertura_promedio_validacion",
+                0
+            ),
+            reverse=True
+        )
+
+        # =====================================================
+        # ANALYTICS REALES POR OPERADOR Y TENDENCIA
+        # =====================================================
+
+        operadores_map = {}
+        tendencia_diaria_map = {}
+        operaciones_con_operador = 0
+        operaciones_sin_operador = 0
+
+        for op in historial:
+
+            if not isinstance(op, dict):
+                continue
+
+            usuario_email_op = str(
+                op.get("usuario_email")
+                or op.get("creado_por")
+                or ""
+            ).strip().lower()
+
+            operador_nombre = str(
+                op.get("operador")
+                or usuario_email_op
+                or ""
+            ).strip()
+
+            rol_op = str(
+                op.get("rol_operador")
+                or "operador"
+            ).strip().lower()
+
+            fecha_raw = (
+                op.get("fecha")
+                or op.get("timestamp_local")
+                or op.get("created_at")
+                or op.get("timestamp")
+            )
+
+            fecha_iso = None
+            fecha_dt = None
+
+            try:
+                if fecha_raw:
+                    fecha_dt = datetime.fromisoformat(
+                        str(fecha_raw)
+                        .replace("Z", "+00:00")
+                    )
+                    fecha_iso = fecha_dt.date().isoformat()
+            except Exception:
+                fecha_dt = None
+                fecha_iso = None
+
+            if fecha_iso:
+                if fecha_iso not in tendencia_diaria_map:
+                    tendencia_diaria_map[fecha_iso] = {
+                        "fecha": fecha_iso,
+                        "operaciones": 0,
+                        "aprobadas": 0,
+                        "verdes": 0,
+                        "amarillas": 0,
+                        "rojas": 0,
+                    }
+
+                tendencia_dia = tendencia_diaria_map[fecha_iso]
+                tendencia_dia["operaciones"] += 1
+
+                if op.get("aprobada") is True:
+                    tendencia_dia["aprobadas"] += 1
+
+                resumen_op = (
+                    op.get("resumen_operativo")
+                    or op.get("control")
+                    or {}
+                )
+
+                if not isinstance(resumen_op, dict):
+                    resumen_op = {}
+
+                semaforo_tendencia = str(
+                    resumen_op.get("semaforo")
+                    or resumen_op.get("estado")
+                    or ""
+                ).upper()
+
+                if semaforo_tendencia == "VERDE":
+                    tendencia_dia["verdes"] += 1
+                elif semaforo_tendencia == "AMARILLO":
+                    tendencia_dia["amarillas"] += 1
+                elif semaforo_tendencia == "ROJO":
+                    tendencia_dia["rojas"] += 1
+
+            if not usuario_email_op and not operador_nombre:
+                operaciones_sin_operador += 1
+                continue
+
+            operaciones_con_operador += 1
+
+            operador_clave = (
+                usuario_email_op
+                or operador_nombre.lower()
+            )
+
+            if operador_clave not in operadores_map:
+                operadores_map[operador_clave] = {
+                    "usuario_email": usuario_email_op or None,
+                    "operador": operador_nombre or usuario_email_op,
+                    "rol": rol_op,
+                    "operaciones": 0,
+                    "aprobadas": 0,
+                    "verdes": 0,
+                    "amarillas": 0,
+                    "rojas": 0,
+                    "campos_no_verificables": 0,
+                    "coberturas": [],
+                    "ultima_actividad": None,
+                }
+
+            operador_kpi = operadores_map[operador_clave]
+            operador_kpi["operaciones"] += 1
+
+            if op.get("aprobada") is True:
+                operador_kpi["aprobadas"] += 1
+
+            resumen_op = (
+                op.get("resumen_operativo")
+                or op.get("control")
+                or {}
+            )
+
+            if not isinstance(resumen_op, dict):
+                resumen_op = {}
+
+            semaforo_operador = str(
+                resumen_op.get("semaforo")
+                or resumen_op.get("estado")
+                or ""
+            ).upper()
+
+            if semaforo_operador == "VERDE":
+                operador_kpi["verdes"] += 1
+            elif semaforo_operador == "AMARILLO":
+                operador_kpi["amarillas"] += 1
+            elif semaforo_operador == "ROJO":
+                operador_kpi["rojas"] += 1
+
+            cobertura_operador = resumen_op.get(
+                "cobertura_validacion_pct"
+            )
+
+            try:
+                operador_kpi["coberturas"].append(
+                    float(cobertura_operador)
+                )
+            except (TypeError, ValueError):
+                pass
+
+            conteo_operador = resumen_op.get("conteo") or {}
+
+            no_verificables_operador = (
+                resumen_op.get("campos_no_verificables")
+                if resumen_op.get("campos_no_verificables") is not None
+                else conteo_operador.get(
+                    "campos_no_verificables",
+                    0
+                )
+            )
+
+            try:
+                operador_kpi["campos_no_verificables"] += int(
+                    no_verificables_operador or 0
+                )
+            except (TypeError, ValueError):
+                pass
+
+            if fecha_raw:
+                fecha_texto = str(fecha_raw)
+
+                if (
+                    not operador_kpi.get("ultima_actividad")
+                    or fecha_texto > operador_kpi["ultima_actividad"]
+                ):
+                    operador_kpi["ultima_actividad"] = fecha_texto
+
+        productividad_por_operador = []
+
+        for operador_kpi in operadores_map.values():
+
+            coberturas_operador = operador_kpi.pop(
+                "coberturas",
+                []
+            )
+
+            cobertura_promedio_operador = round(
+                sum(coberturas_operador)
+                / len(coberturas_operador),
+                2
+            ) if coberturas_operador else 0
+
+            total_operador = operador_kpi.get("operaciones", 0)
+            aprobadas_operador = operador_kpi.get("aprobadas", 0)
+
+            tasa_aprobacion = round(
+                aprobadas_operador
+                / max(total_operador, 1)
+                * 100,
+                2
+            ) if total_operador else 0
+
+            productividad_por_operador.append({
+                **operador_kpi,
+                "cobertura_promedio_validacion": (
+                    cobertura_promedio_operador
+                ),
+                "tasa_aprobacion_pct": tasa_aprobacion,
+            })
+
+        productividad_por_operador = sorted(
+            productividad_por_operador,
+            key=lambda x: (
+                x.get("operaciones", 0),
+                x.get("cobertura_promedio_validacion", 0)
+            ),
+            reverse=True
+        )
+
+        top_operadores = productividad_por_operador[:10]
+
+        tendencia_diaria = sorted(
+            tendencia_diaria_map.values(),
+            key=lambda x: x.get("fecha") or ""
+        )[-30:]
+
         revenue_historico = [
             {
                 "mes": "ACTUAL",
@@ -3753,6 +4140,28 @@ async def argo_master_dashboard(
             "aprobaciones": aprobaciones,
             "top_tenants": top_tenants,
             "activity_feed_total": len(activity_feed),
+            "productividad_por_operador": productividad_por_operador,
+            "top_operadores": top_operadores,
+            "tendencia_diaria": tendencia_diaria,
+            "trazabilidad": {
+                "operaciones_con_operador": operaciones_con_operador,
+                "operaciones_sin_operador": operaciones_sin_operador,
+                "cobertura_trazabilidad_pct": round(
+                    operaciones_con_operador
+                    / max(total_operaciones, 1)
+                    * 100,
+                    2
+                ) if total_operaciones else 0,
+            },
+            "validacion_operacional": {
+                "cobertura_promedio_validacion": cobertura_promedio_validacion,
+                "operaciones_verdes": operaciones_verdes,
+                "operaciones_amarillas": operaciones_amarillas,
+                "operaciones_rojas": operaciones_rojas,
+                "operaciones_sin_control": operaciones_sin_control,
+                "campos_no_verificables_total": campos_no_verificables_total,
+                "cobertura_por_tenant": cobertura_por_tenant,
+            },
         }
 
         activity_feed_operativo = []
@@ -3825,6 +4234,23 @@ async def argo_master_dashboard(
             ),
             "aprobaciones_total": aprobaciones_total,
             "operaciones_por_dia_total": sum(operaciones_por_dia_map.values()),
+            "cobertura_promedio_validacion": cobertura_promedio_validacion,
+            "operaciones_verdes": operaciones_verdes,
+            "operaciones_amarillas": operaciones_amarillas,
+            "operaciones_rojas": operaciones_rojas,
+            "operaciones_sin_control": operaciones_sin_control,
+            "campos_no_verificables_total": campos_no_verificables_total,
+            "operadores_activos_total": len(
+                productividad_por_operador
+            ),
+            "operaciones_con_operador": operaciones_con_operador,
+            "operaciones_sin_operador": operaciones_sin_operador,
+            "cobertura_trazabilidad_pct": round(
+                operaciones_con_operador
+                / max(total_operaciones, 1)
+                * 100,
+                2
+            ) if total_operaciones else 0,
         }
 
         return {
@@ -4676,27 +5102,71 @@ async def procesar_desde_ocr(
         class_clasificacion = class_salida.get("clasificacion", {}) or {}
         class_riesgo = class_salida.get("certeza_y_riesgo", {}) or {}
 
+        entrada_control = {
+            "cliente": consolidado.get("cliente"),
+            "shipment_id": tracking,
+            "tracking": tracking,
+            "proveedor": consolidado.get("proveedor"),
+            "paqueteria": consolidado.get("paqueteria"),
+            "descripcion": consolidado.get("descripcion"),
+            "peso_total": consolidado.get("peso_total"),
+            "cantidad": consolidado.get("cantidad") or consolidado.get("cantidad_bultos"),
+            "cantidad_bultos": consolidado.get("cantidad_bultos"),
+            "marca": consolidado.get("marca"),
+            "modelo": consolidado.get("modelo"),
+            "no_parte": consolidado.get("no_parte"),
+            "no_lote": consolidado.get("no_lote"),
+            "no_serie": consolidado.get("no_serie"),
+            "pais_origen": consolidado.get("pais_origen"),
+        }
+
+        control_generado = argo_control_validar({
+            "version": "2.0",
+            "modulo": "ARGO_PROCESAR_DESDE_OCR",
+            "entrada": entrada_control
+        })
+
+        timestamp_operacion = datetime.now().isoformat()
+
+        usuario_email_operacion = (
+            (usuario_actual or {}).get("email")
+            or x_usuario_email
+            or payload.get("usuario_email")
+            or payload.get("creado_por")
+            or "sistema"
+        )
+
+        operador_operacion = (
+            (usuario_actual or {}).get("nombre")
+            or payload.get("operador")
+            or usuario_email_operacion
+        )
+
+        rol_operador = str(
+            (usuario_actual or {}).get("rol")
+            or payload.get("rol_operador")
+            or "operador"
+        ).lower()
+
         operacion = {
             "cliente_id": cliente_id,
             "cliente_nombre": cliente_nombre_login,
             "id_operacion": id_operacion,
+            "usuario_email": usuario_email_operacion,
+            "operador": operador_operacion,
+            "creado_por": usuario_email_operacion,
+            "rol_operador": rol_operador,
+            "fecha": timestamp_operacion,
+            "timestamp_local": timestamp_operacion,
             "ocr": ocr,
             "class": salida_class,
+            "control": control_generado,
             "semaforo_operacion": ocr.get("severidad_maxima") or "MEDIA",
             "decision": {
                 "accion": "CONTINUAR_CON_ALERTA"
             },
             "generacion": {
-                "entrada": {
-                    "cliente": consolidado.get("cliente"),
-                    "shipment_id": tracking,
-                    "tracking": tracking,
-                    "proveedor": consolidado.get("proveedor"),
-                    "paqueteria": consolidado.get("paqueteria"),
-                    "descripcion": consolidado.get("descripcion"),
-                    "peso_total": consolidado.get("peso_total"),
-                    "cantidad_bultos": consolidado.get("cantidad_bultos"),
-                },
+                "entrada": entrada_control,
                 "conteo": ocr.get("conteo", {}),
             },
         }
@@ -4738,8 +5208,13 @@ async def procesar_desde_ocr(
             "certeza_final_pct": class_riesgo.get("certeza_final_pct") or ocr.get("certeza_final_pct") or 0,
             "nivel_debida_diligencia": class_score.get("nivel_debida_diligencia") or ocr.get("nivel_debida_diligencia") or "BASICA",
             "semaforo_operativo": resumen_operativo.get("semaforo"),
+            "icono_operativo": resumen_operativo.get("icono"),
             "cobertura_validacion_pct": resumen_operativo.get("cobertura_validacion_pct"),
             "dictamen_operativo": resumen_operativo.get("dictamen_operativo"),
+            "campos_totales": resumen_operativo.get("campos_totales"),
+            "campos_disponibles": resumen_operativo.get("campos_disponibles"),
+            "campos_no_verificables": resumen_operativo.get("campos_no_verificables"),
+            "validaciones_operativas": resumen_operativo.get("validaciones_operativas", []),
         }
         if usuario_actual:
             validacion_pdf = validar_feature_plan(usuario_actual, "export_pdf")
