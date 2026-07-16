@@ -2210,11 +2210,30 @@ async def crear_usuario_admin(
             }
 
         creado = response_insert.json()
+        usuario_creado = creado[0]
+
+        auditoria_creacion = guardar_auditoria_admin(
+            accion="CREAR_USUARIO",
+            actor_email=x_usuario_email,
+            actor_rol=rol_admin,
+            tenant=cliente_usuario,
+            objetivo_email=email,
+            detalle={
+                "nombre": nombre,
+                "rol": rol,
+                "activo": activo,
+                "plan_saas": (
+                    usuario_creado.get("plan_saas")
+                    or usuario_creado.get("plan")
+                ),
+            },
+        )
 
         return {
             "ok": True,
             "mensaje": "Usuario creado correctamente",
-            "usuario": creado[0],
+            "usuario": usuario_creado,
+            "auditoria": auditoria_creacion,
             "rbac": {
                 "creado_por": x_usuario_email,
                 "rol_admin": rol_admin,
@@ -4174,42 +4193,89 @@ async def argo_master_dashboard(
             activity_feed_operativo.append(nuevo)
 
         activity_feed_admin = []
+        activity_feed_admin_fuente = "supabase"
 
         try:
             import json
             import os
 
-            path_logs = "logs/admin_audit.jsonl"
+            eventos_admin = []
 
-            if os.path.exists(path_logs):
-                with open(path_logs, "r", encoding="utf-8") as f:
-                    for line in f:
-                        try:
-                            evento = json.loads(line.strip())
-                        except Exception:
-                            continue
+            if supabase_config_ok():
+                url_feed_admin = (
+                    f"{SUPABASE_URL}/rest/v1/argo_auditoria_admin"
+                    f"?select=fecha,accion,actor_email,actor_rol,"
+                    f"tenant,objetivo_email,detalle"
+                    f"&order=fecha.desc"
+                    f"&limit=100"
+                )
 
-                        tenant_evento = evento.get("tenant")
+                respuesta_feed_admin = requests.get(
+                    url_feed_admin,
+                    headers=_headers(),
+                    timeout=30,
+                )
 
-                        if tenant_evento and tenant_evento not in tenants:
-                            continue
+                if respuesta_feed_admin.status_code == 200:
+                    eventos_admin = respuesta_feed_admin.json() or []
+                else:
+                    print(
+                        "WARNING activity_feed_admin supabase:",
+                        respuesta_feed_admin.status_code,
+                        respuesta_feed_admin.text,
+                    )
 
-                        detalle = evento.get("detalle") or {}
-                        accion_evento = str(evento.get("accion") or "EVENTO_ADMIN")
+            if not eventos_admin:
+                activity_feed_admin_fuente = "jsonl_fallback"
+                path_logs = "logs/admin_audit.jsonl"
 
-                        activity_feed_admin.append({
-                            "tipo": "ADMIN",
-                            "accion": accion_evento,
-                            "tenant": tenant_evento or "SIN_TENANT",
-                            "operacion": detalle.get("id_operacion") or accion_evento,
-                            "riesgo": detalle.get("severidad") or "ADMIN",
-                            "aprobada": True,
-                            "fecha": evento.get("fecha") or "N/D",
-                            "actor_email": evento.get("actor_email"),
-                            "actor_rol": evento.get("actor_rol"),
-                            "objetivo_email": evento.get("objetivo_email"),
-                            "detalle": detalle,
-                        })
+                if os.path.exists(path_logs):
+                    with open(path_logs, "r", encoding="utf-8") as f:
+                        for line in f:
+                            try:
+                                evento = json.loads(line.strip())
+                            except Exception:
+                                continue
+
+                            eventos_admin.append(evento)
+
+            for evento in eventos_admin:
+                if not isinstance(evento, dict):
+                    continue
+
+                tenant_evento = evento.get("tenant")
+
+                if tenant_evento and tenant_evento not in tenants:
+                    continue
+
+                detalle = evento.get("detalle") or {}
+
+                if not isinstance(detalle, dict):
+                    detalle = {}
+
+                accion_evento = str(
+                    evento.get("accion")
+                    or "EVENTO_ADMIN"
+                )
+
+                activity_feed_admin.append({
+                    "tipo": "ADMIN",
+                    "accion": accion_evento,
+                    "tenant": tenant_evento or "SIN_TENANT",
+                    "operacion": (
+                        detalle.get("id_operacion")
+                        or evento.get("objetivo_email")
+                        or accion_evento
+                    ),
+                    "riesgo": detalle.get("severidad") or "ADMIN",
+                    "aprobada": True,
+                    "fecha": evento.get("fecha") or "N/D",
+                    "actor_email": evento.get("actor_email"),
+                    "actor_rol": evento.get("actor_rol"),
+                    "objetivo_email": evento.get("objetivo_email"),
+                    "detalle": detalle,
+                    "fuente": activity_feed_admin_fuente,
+                })
 
         except Exception as feed_admin_error:
             print("WARNING activity_feed_admin:", str(feed_admin_error))
@@ -4227,6 +4293,7 @@ async def argo_master_dashboard(
             "activity_feed_total": len(activity_feed_unificado),
             "activity_feed_operativo_total": len(activity_feed_operativo),
             "activity_feed_admin_total": len(activity_feed_admin),
+            "activity_feed_admin_fuente": activity_feed_admin_fuente,
             "revenue_mensual_estimado_usd": revenue_estimado,
             "ticket_promedio_tenant_usd": round(
                 revenue_estimado / max(len(tenants), 1),
