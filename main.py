@@ -4463,6 +4463,7 @@ async def endpoint_dashboard(
 @app.post("/argo/ocr")
 async def argo_ocr(
     request: Request,
+    archivos: list[UploadFile] | None = File(default=None),
     archivo1: UploadFile = File(None),
     archivo2: UploadFile = File(None),
     archivo3: UploadFile = File(None),
@@ -4497,17 +4498,59 @@ async def argo_ocr(
         )
 
 
-    archivos = [archivo1, archivo2, archivo3, archivo4, archivo5]
-    archivos_validos = [a for a in archivos if a is not None]
+    # =====================================================
+    # CARGA MASIVA DE EVIDENCIAS v1.0
+    # Compatibilidad:
+    # - Campo dinámico repetible: archivos
+    # - Campos legacy: archivo1 ... archivo5
+    # =====================================================
+    MAX_ARCHIVOS_POR_OPERACION = 100
+    MAX_BYTES_POR_ARCHIVO = 20 * 1024 * 1024
+    MAX_BYTES_TOTALES = 500 * 1024 * 1024
+
+    archivos_dinamicos = list(archivos or [])
+    archivos_legacy = [
+        archivo1,
+        archivo2,
+        archivo3,
+        archivo4,
+        archivo5,
+    ]
+
+    archivos_validos = [
+        archivo
+        for archivo in archivos_dinamicos + archivos_legacy
+        if archivo is not None
+    ]
 
     if not archivos_validos:
-        return {
-            "ok": False,
-            "error": "No se recibieron archivos"
-        }
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": "No se recibieron archivos",
+                "codigo": "ARCHIVOS_REQUERIDOS",
+            },
+        )
+
+    if len(archivos_validos) > MAX_ARCHIVOS_POR_OPERACION:
+        return JSONResponse(
+            status_code=413,
+            content={
+                "ok": False,
+                "error": (
+                    f"Máximo {MAX_ARCHIVOS_POR_OPERACION} archivos "
+                    "por operación"
+                ),
+                "codigo": "LIMITE_ARCHIVOS_EXCEDIDO",
+                "recibidos": len(archivos_validos),
+                "maximo": MAX_ARCHIVOS_POR_OPERACION,
+            },
+        )
 
     resultados = []
     errores = []
+    bytes_recibidos = 0
 
     # =========================
     # OCR POR ARCHIVO
@@ -4515,6 +4558,49 @@ async def argo_ocr(
     for file in archivos_validos:
         try:
             contenido = await file.read()
+            tamano_archivo = len(contenido)
+            bytes_recibidos += tamano_archivo
+
+            if tamano_archivo == 0:
+                errores.append({
+                    "archivo": getattr(
+                        file,
+                        "filename",
+                        "archivo_sin_nombre",
+                    ),
+                    "error": "Archivo vacío",
+                    "codigo": "ARCHIVO_VACIO",
+                })
+                continue
+
+            if tamano_archivo > MAX_BYTES_POR_ARCHIVO:
+                errores.append({
+                    "archivo": getattr(
+                        file,
+                        "filename",
+                        "archivo_sin_nombre",
+                    ),
+                    "error": "El archivo supera 20 MB",
+                    "codigo": "ARCHIVO_DEMASIADO_GRANDE",
+                    "bytes": tamano_archivo,
+                })
+                continue
+
+            if bytes_recibidos > MAX_BYTES_TOTALES:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "ok": False,
+                        "error": (
+                            "La carga completa supera el límite "
+                            "operativo de 500 MB"
+                        ),
+                        "codigo": "CARGA_TOTAL_DEMASIADO_GRANDE",
+                        "bytes_recibidos": bytes_recibidos,
+                        "maximo_bytes": MAX_BYTES_TOTALES,
+                    },
+                )
+
             imagen_base64 = convertir_a_base64(contenido)
 
             response = client.responses.create(
@@ -4848,6 +4934,9 @@ Reglas obligatorias:
         "alertas": alertas,
         "total_archivos": len(archivos_validos),
         "procesados": len(resultados),
+        "fallidos": len(errores),
+        "bytes_recibidos": bytes_recibidos,
+        "limite_archivos": MAX_ARCHIVOS_POR_OPERACION,
         "errores": errores,
         "consolidado": consolidado,
         "resultados": resultados
