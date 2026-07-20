@@ -2143,7 +2143,11 @@ async def crear_usuario_admin(
             )
         cliente_admin = usuario_admin.get("id_cliente")
 
-        cliente_usuario = payload.get("id_cliente")
+        cliente_usuario = (
+            payload.get("id_cliente")
+            or payload.get("cliente_id")
+            or cliente_admin
+        )
 
         # =========================================
         # AISLAMIENTO TENANT
@@ -2151,6 +2155,13 @@ async def crear_usuario_admin(
 
         if rol_admin != "master_admin":
             cliente_usuario = cliente_admin
+
+        if not cliente_usuario:
+            return {
+                "ok": False,
+                "error": "Tenant requerido para crear usuario",
+                "codigo": "TENANT_REQUIRED",
+            }
 
         # =========================================
         # VALIDAR EXISTENCIA
