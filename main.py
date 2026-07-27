@@ -5,6 +5,20 @@ from fastapi.middleware.cors import CORSMiddleware
 import hmac
 import os
 import base64
+from openai import OpenAI
+
+def convertir_a_base64(contenido: bytes) -> str:
+    """Convierte contenido binario a una cadena Base64 UTF-8."""
+    if not isinstance(contenido, (bytes, bytearray)):
+        raise TypeError("El contenido para Base64 debe ser bytes")
+
+    return base64.b64encode(contenido).decode("utf-8")
+
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+
 import hashlib
 from typing import Optional, List
 from pydantic import BaseModel
@@ -4602,6 +4616,9 @@ async def argo_ocr(
                 )
 
             imagen_base64 = convertir_a_base64(contenido)
+
+            if client is None:
+                raise RuntimeError("OPENAI_API_KEY no configurada")
 
             response = client.responses.create(
                 model="gpt-5.4",
