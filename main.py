@@ -87,12 +87,46 @@ def _headers():
 
 SUPABASE_BUCKET = "argo-files"
 
+ARGO_CORS_ORIGINS_DEFAULT = [
+    "http://127.0.0.1:8001",
+    "http://localhost:8001",
+]
+
+ARGO_CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "ARGO_CORS_ORIGINS",
+        ",".join(ARGO_CORS_ORIGINS_DEFAULT),
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ARGO_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+    ],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "X-Usuario-Email",
+        "X-Cliente-Id",
+        "X-Usuario-Rol",
+    ],
+    expose_headers=[
+        "X-ARGO-Auth-Mode",
+    ],
+    max_age=600,
 )
 
 async def argo_ocr(file):
@@ -1334,6 +1368,255 @@ async def consultar_historial_argo(limit: int = 50):
 # RBAC ENTERPRISE BACKEND
 # =========================================================
 
+
+# =========================================================
+# SESIÓN FIRMADA ARGO
+# Implementación mínima basada en HMAC-SHA256.
+# No requiere dependencias externas.
+# =========================================================
+
+ARGO_SESSION_TTL_SECONDS = int(os.getenv("ARGO_SESSION_TTL_SECONDS", "28800"))
+
+
+def _base64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
+
+
+def _base64url_decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode("utf-8"))
+
+
+def crear_token_sesion(user: dict) -> str:
+    import json
+    import time
+
+    secret = os.getenv("ARGO_SESSION_SECRET", "").strip()
+    if not secret:
+        raise RuntimeError("ARGO_SESSION_SECRET no configurado")
+
+    ahora = int(time.time())
+
+    payload = {
+        "email": str(user.get("email") or "").strip().lower(),
+        "id_cliente": user.get("id_cliente"),
+        "rol": str(user.get("rol") or "operador").lower(),
+        "iat": ahora,
+        "exp": ahora + ARGO_SESSION_TTL_SECONDS,
+    }
+
+    payload_b64 = _base64url_encode(
+        json.dumps(
+            payload,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    )
+
+    firma = hmac.new(
+        secret.encode("utf-8"),
+        payload_b64.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+
+    return f"{payload_b64}.{_base64url_encode(firma)}"
+
+
+def validar_token_sesion(token: str):
+    import json
+    import time
+
+    if not token or "." not in token:
+        return False, None, "Token ausente o inválido"
+
+    secret = os.getenv("ARGO_SESSION_SECRET", "").strip()
+    if not secret:
+        return False, None, "Sesión no configurada"
+
+    try:
+        payload_b64, firma_b64 = token.split(".", 1)
+
+        firma_esperada = hmac.new(
+            secret.encode("utf-8"),
+            payload_b64.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+
+        firma_esperada_b64 = _base64url_encode(firma_esperada)
+
+        if not hmac.compare_digest(firma_b64, firma_esperada_b64):
+            return False, None, "Firma de sesión inválida"
+
+        payload = json.loads(
+            _base64url_decode(payload_b64).decode("utf-8")
+        )
+
+        if int(payload.get("exp") or 0) < int(time.time()):
+            return False, None, "Sesión expirada"
+
+        if not payload.get("email"):
+            return False, None, "Sesión sin identidad"
+
+        return True, payload, "Sesión válida"
+
+    except Exception:
+        return False, None, "Token de sesión inválido"
+
+
+
+
+# =========================================================
+# MIDDLEWARE DE SESIÓN FIRMADA ARGO
+# Modo transición:
+# - Si existe Bearer, valida y usa exclusivamente su identidad.
+# - Si el Bearer es inválido, rechaza la petición.
+# - Si no existe Bearer, conserva temporalmente el flujo legado.
+# =========================================================
+
+@app.middleware("http")
+async def middleware_sesion_firmada_argo(request, call_next):
+    """
+    Protege todas las rutas /argo/* excepto /argo/login.
+
+    Las rutas del frontend, archivos estáticos, health y APIs heredadas
+    permanecen fuera de este cierre hasta completar su revisión individual.
+    """
+
+    from fastapi.responses import JSONResponse
+
+    path = request.url.path
+    method = request.method.upper()
+
+    es_preflight = method == "OPTIONS"
+    es_login = path == "/argo/login"
+    es_ruta_argo_protegida = (
+        path.startswith("/argo/")
+        and not es_login
+        and not es_preflight
+    )
+
+    if not es_ruta_argo_protegida:
+        request.state.sesion_argo = None
+        request.state.autenticacion_argo = "publica"
+
+        response = await call_next(request)
+        response.headers["X-ARGO-Auth-Mode"] = "publica"
+        return response
+
+    authorization = request.headers.get(
+        "authorization",
+        "",
+    ).strip()
+
+    if not authorization:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "error": "Sesión requerida",
+                "codigo": "AUTH_REQUERIDA",
+            },
+            headers={
+                "X-ARGO-Auth-Mode": "rechazada",
+            },
+        )
+
+    esquema, separador, token = authorization.partition(" ")
+
+    if (
+        esquema.lower() != "bearer"
+        or not separador
+        or not token.strip()
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "error": "Formato de autorización inválido",
+                "codigo": "AUTH_FORMAT_INVALIDO",
+            },
+            headers={
+                "X-ARGO-Auth-Mode": "rechazada",
+            },
+        )
+
+    ok, sesion, motivo = validar_token_sesion(token.strip())
+
+    if not ok:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "error": motivo,
+                "codigo": "AUTH_TOKEN_INVALIDO",
+            },
+            headers={
+                "X-ARGO-Auth-Mode": "rechazada",
+            },
+        )
+
+    email_sesion = str(
+        sesion.get("email") or ""
+    ).strip().lower()
+
+    cliente_sesion = str(
+        sesion.get("id_cliente") or ""
+    ).strip()
+
+    rol_sesion = str(
+        sesion.get("rol") or "operador"
+    ).strip().lower()
+
+    if not email_sesion or not cliente_sesion:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "error": "Sesión sin identidad completa",
+                "codigo": "AUTH_IDENTIDAD_INVALIDA",
+            },
+            headers={
+                "X-ARGO-Auth-Mode": "rechazada",
+            },
+        )
+
+    headers_actuales = [
+        (clave, valor)
+        for clave, valor in request.scope.get("headers", [])
+        if clave.lower() not in {
+            b"x-usuario-email",
+            b"x-cliente-id",
+            b"x-usuario-rol",
+        }
+    ]
+
+    headers_actuales.extend(
+        [
+            (
+                b"x-usuario-email",
+                email_sesion.encode("utf-8"),
+            ),
+            (
+                b"x-cliente-id",
+                cliente_sesion.encode("utf-8"),
+            ),
+            (
+                b"x-usuario-rol",
+                rol_sesion.encode("utf-8"),
+            ),
+        ]
+    )
+
+    request.scope["headers"] = headers_actuales
+    request.state.sesion_argo = sesion
+    request.state.autenticacion_argo = "sesion_firmada"
+
+    response = await call_next(request)
+    response.headers["X-ARGO-Auth-Mode"] = "sesion_firmada"
+
+    return response
+
+
 ROLES_APROBACION = {"supervisor", "admin", "admin_cliente", "master_admin"}
 ROLES_ADMIN_CLIENTES = {"admin", "admin_cliente", "master_admin"}
 
@@ -2083,6 +2366,7 @@ async def login_usuario(payload: dict = Body(...)):
 
     return {
         "ok": True,
+        "session_token": crear_token_sesion(user),
         "usuario": {
             "email": user["email"],
             "nombre": user["nombre"],

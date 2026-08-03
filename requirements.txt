@@ -1,8 +1,11 @@
-fastapi
-uvicorn
-openpyxl
-python-multipart
-requests
-openai>=1.0.0
-Pillow
-stripe>=10.0.0
+# ARGO Enterprise SaaS
+# Dependencias directas validadas
+
+fastapi==0.135.3
+uvicorn==0.42.0
+openpyxl==3.1.5
+python-multipart==0.0.22
+requests==2.33.1
+openai==2.46.0
+Pillow==12.3.0
+stripe==15.3.1
