@@ -5263,6 +5263,135 @@ async def endpoint_dashboard(
             "ok": False,
             "error": str(e)
         }
+
+# ============================================================
+# H-023.1 — VALIDACIÓN DE IMÁGENES PARA OCR
+# ============================================================
+
+ARGO_OCR_EXTENSIONS_ALLOWED = {
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".png": "PNG",
+    ".webp": "WEBP",
+}
+
+ARGO_OCR_MIME_ALLOWED = {
+    "image/jpeg": "JPEG",
+    "image/jpg": "JPEG",
+    "image/png": "PNG",
+    "image/webp": "WEBP",
+}
+
+
+def validar_imagen_ocr_argo(
+    *,
+    contenido: bytes,
+    filename: str = None,
+    content_type: str = None,
+):
+    """
+    Valida nombre, MIME y contenido real de una imagen OCR.
+
+    No conserva ni modifica el archivo recibido.
+    """
+    from io import BytesIO
+    from pathlib import Path as FilePath
+    from PIL import Image, UnidentifiedImageError
+
+    nombre = str(filename or "").strip()
+    mime = str(content_type or "").strip().lower()
+    extension = FilePath(nombre).suffix.lower()
+
+    if not nombre:
+        return False, {
+            "codigo": "NOMBRE_ARCHIVO_INVALIDO",
+            "error": "El archivo no tiene un nombre válido",
+        }
+
+    formato_extension = ARGO_OCR_EXTENSIONS_ALLOWED.get(
+        extension
+    )
+
+    if formato_extension is None:
+        return False, {
+            "codigo": "EXTENSION_NO_PERMITIDA",
+            "error": (
+                "Extensión no permitida. "
+                "Solo se aceptan JPG, JPEG, PNG y WEBP"
+            ),
+            "extension": extension or None,
+        }
+
+    formato_mime = ARGO_OCR_MIME_ALLOWED.get(mime)
+
+    if formato_mime is None:
+        return False, {
+            "codigo": "TIPO_MIME_NO_PERMITIDO",
+            "error": (
+                "Tipo de contenido no permitido para OCR"
+            ),
+            "content_type": mime or None,
+        }
+
+    try:
+        with Image.open(BytesIO(contenido)) as image:
+            formato_real = str(
+                image.format or ""
+            ).upper()
+
+            image.verify()
+
+    except UnidentifiedImageError:
+        return False, {
+            "codigo": "CONTENIDO_NO_ES_IMAGEN",
+            "error": (
+                "El contenido del archivo no es una imagen válida"
+            ),
+        }
+
+    except Exception:
+        return False, {
+            "codigo": "IMAGEN_CORRUPTA",
+            "error": (
+                "La imagen está corrupta o no puede procesarse"
+            ),
+        }
+
+    if formato_real not in {"JPEG", "PNG", "WEBP"}:
+        return False, {
+            "codigo": "FORMATO_IMAGEN_NO_PERMITIDO",
+            "error": "El formato real de la imagen no está permitido",
+            "formato_real": formato_real or None,
+        }
+
+    if formato_real != formato_extension:
+        return False, {
+            "codigo": "EXTENSION_NO_COINCIDE",
+            "error": (
+                "La extensión no coincide con el contenido real"
+            ),
+            "formato_real": formato_real,
+            "formato_extension": formato_extension,
+        }
+
+    if formato_real != formato_mime:
+        return False, {
+            "codigo": "MIME_NO_COINCIDE",
+            "error": (
+                "El tipo MIME no coincide con el contenido real"
+            ),
+            "formato_real": formato_real,
+            "formato_mime": formato_mime,
+        }
+
+    return True, {
+        "codigo": "IMAGEN_VALIDA",
+        "formato": formato_real,
+        "extension": extension,
+        "content_type": mime,
+    }
+
+
 @app.post("/argo/ocr")
 async def argo_ocr(
     request: Request,
@@ -5386,6 +5515,33 @@ async def argo_ocr(
                     "error": "El archivo supera 20 MB",
                     "codigo": "ARCHIVO_DEMASIADO_GRANDE",
                     "bytes": tamano_archivo,
+                })
+                continue
+
+            validacion_imagen_ok, validacion_imagen = (
+                validar_imagen_ocr_argo(
+                    contenido=contenido,
+                    filename=getattr(
+                        file,
+                        "filename",
+                        None,
+                    ),
+                    content_type=getattr(
+                        file,
+                        "content_type",
+                        None,
+                    ),
+                )
+            )
+
+            if not validacion_imagen_ok:
+                errores.append({
+                    "archivo": getattr(
+                        file,
+                        "filename",
+                        "archivo_sin_nombre",
+                    ),
+                    **validacion_imagen,
                 })
                 continue
 
