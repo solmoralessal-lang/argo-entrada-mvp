@@ -183,6 +183,8 @@ from argo_supabase_historial import (
     aprobar_operacion_supabase,
     obtener_clientes_supabase,
 )
+import threading
+import time
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -1615,6 +1617,187 @@ async def middleware_sesion_firmada_argo(request, call_next):
     response.headers["X-ARGO-Auth-Mode"] = "sesion_firmada"
 
     return response
+
+
+# ============================================================
+# RATE-001 — CONTROL LOCAL DE TASA PARA RUTAS SENSIBLES
+# ============================================================
+
+ARGO_RATE_LIMIT_WINDOW_SECONDS = max(
+    1,
+    int(os.getenv("ARGO_RATE_LIMIT_WINDOW_SECONDS", "60")),
+)
+
+ARGO_RATE_LIMIT_LOGIN = max(
+    1,
+    int(os.getenv("ARGO_RATE_LIMIT_LOGIN", "10")),
+)
+
+ARGO_RATE_LIMIT_OCR = max(
+    1,
+    int(os.getenv("ARGO_RATE_LIMIT_OCR", "30")),
+)
+
+ARGO_RATE_LIMIT_ADMIN = max(
+    1,
+    int(os.getenv("ARGO_RATE_LIMIT_ADMIN", "10")),
+)
+
+ARGO_TRUST_PROXY_HEADERS = (
+    os.getenv("ARGO_TRUST_PROXY_HEADERS", "false")
+    .strip()
+    .lower()
+    in {"1", "true", "yes", "on"}
+)
+
+ARGO_RATE_LIMIT_RULES = {
+    ("POST", "/argo/login"): ARGO_RATE_LIMIT_LOGIN,
+    ("POST", "/argo/ocr"): ARGO_RATE_LIMIT_OCR,
+    ("POST", "/argo/generar_desde_ocr"): ARGO_RATE_LIMIT_OCR,
+    ("POST", "/argo/procesar_desde_ocr"): ARGO_RATE_LIMIT_OCR,
+    ("POST", "/argo/admin/crear_usuario"): ARGO_RATE_LIMIT_ADMIN,
+    (
+        "PATCH",
+        "/argo/admin/usuario/reset_password",
+    ): ARGO_RATE_LIMIT_ADMIN,
+}
+
+_argo_rate_limit_events = {}
+_argo_rate_limit_lock = threading.Lock()
+
+
+def _argo_client_ip(request) -> str:
+    if ARGO_TRUST_PROXY_HEADERS:
+        forwarded_for = request.headers.get(
+            "x-forwarded-for",
+            "",
+        )
+
+        if forwarded_for:
+            first_ip = forwarded_for.split(",", 1)[0].strip()
+
+            if first_ip:
+                return first_ip
+
+        real_ip = request.headers.get(
+            "x-real-ip",
+            "",
+        ).strip()
+
+        if real_ip:
+            return real_ip
+
+    if request.client and request.client.host:
+        return request.client.host
+
+    return "ip-desconocida"
+
+
+def _argo_rate_limit_check(
+    *,
+    client_key: str,
+    method: str,
+    path: str,
+    limit: int,
+    now: float,
+):
+    bucket = (client_key, method, path)
+    cutoff = now - ARGO_RATE_LIMIT_WINDOW_SECONDS
+
+    with _argo_rate_limit_lock:
+        events = _argo_rate_limit_events.setdefault(
+            bucket,
+            [],
+        )
+
+        events[:] = [
+            event
+            for event in events
+            if event > cutoff
+        ]
+
+        if len(events) >= limit:
+            retry_after = max(
+                1,
+                int(
+                    ARGO_RATE_LIMIT_WINDOW_SECONDS
+                    - (now - events[0])
+                )
+                + 1,
+            )
+
+            return False, 0, retry_after
+
+        events.append(now)
+
+        return True, max(0, limit - len(events)), 0
+
+
+def _argo_rate_limit_reset_for_tests() -> None:
+    with _argo_rate_limit_lock:
+        _argo_rate_limit_events.clear()
+
+
+@app.middleware("http")
+async def middleware_rate_limit_argo(request, call_next):
+    from fastapi.responses import JSONResponse
+
+    method = request.method.upper()
+    path = request.url.path
+
+    if method == "OPTIONS":
+        return await call_next(request)
+
+    limit = ARGO_RATE_LIMIT_RULES.get((method, path))
+
+    if limit is None:
+        return await call_next(request)
+
+    allowed, remaining, retry_after = (
+        _argo_rate_limit_check(
+            client_key=_argo_client_ip(request),
+            method=method,
+            path=path,
+            limit=limit,
+            now=time.monotonic(),
+        )
+    )
+
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "ok": False,
+                "error": (
+                    "Demasiadas solicitudes. "
+                    "Intenta nuevamente más tarde."
+                ),
+                "codigo": "RATE_LIMIT_EXCEDIDO",
+                "ruta": path,
+                "retry_after": retry_after,
+            },
+            headers={
+                "Retry-After": str(retry_after),
+                "X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Window": str(
+                    ARGO_RATE_LIMIT_WINDOW_SECONDS
+                ),
+            },
+        )
+
+    response = await call_next(request)
+
+    response.headers["X-RateLimit-Limit"] = str(limit)
+    response.headers["X-RateLimit-Remaining"] = str(
+        remaining
+    )
+    response.headers["X-RateLimit-Window"] = str(
+        ARGO_RATE_LIMIT_WINDOW_SECONDS
+    )
+
+    return response
+
 
 
 ROLES_APROBACION = {"supervisor", "admin", "admin_cliente", "master_admin"}
