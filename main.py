@@ -1966,6 +1966,78 @@ async def middleware_rate_limit_argo(request, call_next):
     return response
 
 
+# ============================================================
+# H-022 — CABECERAS HTTP DE SEGURIDAD
+# ============================================================
+
+ARGO_HSTS_ENABLED = (
+    os.getenv("ARGO_HSTS_ENABLED", "false")
+    .strip()
+    .lower()
+    in {"1", "true", "yes", "on"}
+)
+
+ARGO_CONTENT_SECURITY_POLICY = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+    ]
+)
+
+
+@app.middleware("http")
+async def middleware_cabeceras_seguridad_argo(
+    request,
+    call_next,
+):
+    """
+    Agrega defensas del navegador sin modificar el contenido
+    ni la lógica de las respuestas de ARGO.
+    """
+    response = await call_next(request)
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = (
+        "strict-origin-when-cross-origin"
+    )
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), "
+        "payment=(), usb=()"
+    )
+    response.headers["Content-Security-Policy"] = (
+        ARGO_CONTENT_SECURITY_POLICY
+    )
+
+    path = request.url.path
+
+    if path.startswith("/argo/"):
+        response.headers["Cache-Control"] = (
+            "no-store, no-cache, must-revalidate, "
+            "max-age=0"
+        )
+        response.headers["Pragma"] = "no-cache"
+
+    if (
+        request.url.scheme == "https"
+        or ARGO_HSTS_ENABLED
+    ):
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+
+    return response
+
+
+
 
 ROLES_APROBACION = {"supervisor", "admin", "admin_cliente", "master_admin"}
 ROLES_ADMIN_CLIENTES = {"admin", "admin_cliente", "master_admin"}
