@@ -3515,6 +3515,18 @@ async def cambiar_estado_usuario_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+    # H-023.3B — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=['email'],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     try:
 
         email_objetivo = str(payload.get("email") or "").strip().lower()
@@ -3613,6 +3625,18 @@ async def eliminar_acceso_usuario_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+    # H-023.3B — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=['email'],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     try:
         email_objetivo = str(payload.get("email") or "").strip().lower()
 
@@ -3688,6 +3712,18 @@ async def cambiar_rol_usuario_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+    # H-023.3B — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=['email', 'rol'],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     try:
 
         email_objetivo = str(payload.get("email") or "").strip().lower()
@@ -3799,6 +3835,18 @@ async def cambiar_plan_usuario_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+    # H-023.3B — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=['email'],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     try:
         email_objetivo = str(payload.get("email") or "").strip().lower()
         nuevo_plan = normalizar_plan(payload.get("plan_saas") or payload.get("plan") or "")
@@ -3914,6 +3962,18 @@ async def actualizar_licencia_tenant_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+    # H-023.3B — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=[],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     try:
         tenant_id = str(
             payload.get("tenant")
@@ -4039,6 +4099,18 @@ async def actualizar_plan_tenant_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+    # H-023.3B — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=[],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     try:
         tenant_id = str(
             payload.get("tenant")
