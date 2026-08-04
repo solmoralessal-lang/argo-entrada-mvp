@@ -1467,6 +1467,133 @@ def validar_token_sesion(token: str):
 
 
 
+
+# ============================================================
+# SECURITY-002 — EVENTOS DE SEGURIDAD INTEGRADOS
+# ============================================================
+
+ARGO_SECURITY_SENSITIVE_KEYS = {
+    "password",
+    "contraseña",
+    "token",
+    "session_token",
+    "secret",
+    "authorization",
+    "api_key",
+    "apikey",
+}
+
+
+def _argo_sanitizar_detalle_seguridad(value):
+    """
+    Elimina campos sensibles antes de persistir un evento.
+    """
+    if isinstance(value, dict):
+        clean = {}
+
+        for key, item in value.items():
+            key_text = str(key)
+
+            if key_text.strip().lower() in (
+                ARGO_SECURITY_SENSITIVE_KEYS
+            ):
+                clean[key_text] = "<REDACTADO>"
+            else:
+                clean[key_text] = (
+                    _argo_sanitizar_detalle_seguridad(item)
+                )
+
+        return clean
+
+    if isinstance(value, (list, tuple)):
+        return [
+            _argo_sanitizar_detalle_seguridad(item)
+            for item in value
+        ]
+
+    return value
+
+
+def _argo_ip_seguridad(request) -> str:
+    """
+    Obtiene la misma IP efectiva usada por RATE-001.
+    """
+    resolver = globals().get("_argo_client_ip")
+
+    if callable(resolver):
+        try:
+            return resolver(request)
+        except Exception:
+            pass
+
+    client = getattr(request, "client", None)
+    host = getattr(client, "host", None)
+
+    return str(host or "ip-desconocida")
+
+
+def registrar_evento_seguridad(
+    *,
+    accion: str,
+    request=None,
+    actor_email: str = None,
+    actor_rol: str = None,
+    tenant: str = None,
+    objetivo_email: str = None,
+    detalle: dict = None,
+):
+    """
+    Registra un evento sin interrumpir la operación de ARGO.
+
+    Nunca debe propagar excepciones al usuario.
+    """
+    try:
+        guardar = globals().get(
+            "guardar_auditoria_admin"
+        )
+
+        if not callable(guardar):
+            return {
+                "ok": False,
+                "storage": "no_disponible",
+            }
+
+        detalle_seguro = (
+            _argo_sanitizar_detalle_seguridad(
+                detalle or {}
+            )
+        )
+
+        if request is not None:
+            detalle_seguro.setdefault(
+                "ip",
+                _argo_ip_seguridad(request),
+            )
+            detalle_seguro.setdefault(
+                "metodo",
+                request.method.upper(),
+            )
+            detalle_seguro.setdefault(
+                "ruta",
+                request.url.path,
+            )
+
+        return guardar(
+            accion=accion,
+            actor_email=actor_email,
+            actor_rol=actor_rol,
+            tenant=tenant,
+            objetivo_email=objetivo_email,
+            detalle=detalle_seguro,
+        )
+
+    except Exception:
+        return {
+            "ok": False,
+            "storage": "error_ignorado",
+        }
+
+
 # =========================================================
 # MIDDLEWARE DE SESIÓN FIRMADA ARGO
 # Modo transición:
@@ -1511,6 +1638,15 @@ async def middleware_sesion_firmada_argo(request, call_next):
     ).strip()
 
     if not authorization:
+        registrar_evento_seguridad(
+            accion="AUTH_REQUERIDA",
+            request=request,
+            detalle={
+                "resultado": "rechazado",
+                "motivo": "authorization_ausente",
+            },
+        )
+
         return JSONResponse(
             status_code=401,
             content={
@@ -1530,6 +1666,15 @@ async def middleware_sesion_firmada_argo(request, call_next):
         or not separador
         or not token.strip()
     ):
+        registrar_evento_seguridad(
+            accion="AUTH_FORMAT_INVALIDO",
+            request=request,
+            detalle={
+                "resultado": "rechazado",
+                "motivo": "formato_bearer_invalido",
+            },
+        )
+
         return JSONResponse(
             status_code=401,
             content={
@@ -1545,6 +1690,15 @@ async def middleware_sesion_firmada_argo(request, call_next):
     ok, sesion, motivo = validar_token_sesion(token.strip())
 
     if not ok:
+        registrar_evento_seguridad(
+            accion="AUTH_TOKEN_INVALIDO",
+            request=request,
+            detalle={
+                "resultado": "rechazado",
+                "motivo": motivo,
+            },
+        )
+
         return JSONResponse(
             status_code=401,
             content={
@@ -1764,6 +1918,19 @@ async def middleware_rate_limit_argo(request, call_next):
     )
 
     if not allowed:
+        registrar_evento_seguridad(
+            accion="RATE_LIMIT_EXCEDIDO",
+            request=request,
+            detalle={
+                "resultado": "bloqueado",
+                "limite": limit,
+                "ventana_segundos": (
+                    ARGO_RATE_LIMIT_WINDOW_SECONDS
+                ),
+                "retry_after": retry_after,
+            },
+        )
+
         return JSONResponse(
             status_code=429,
             content={
@@ -2498,18 +2665,45 @@ def validar_limite_operaciones_plan(usuario: dict):
 
 
 @app.post("/argo/login")
-async def login_usuario(payload: dict = Body(...)):
+async def login_usuario(
+    request: Request,
+    payload: dict = Body(...),
+):
     
     email = payload.get("email")
     password = payload.get("password")
 
     if not email or not password:
+        registrar_evento_seguridad(
+            accion="LOGIN_FAIL",
+            request=request,
+            actor_email=(
+                str(email).strip().lower()
+                if email
+                else None
+            ),
+            detalle={
+                "resultado": "fallido",
+                "motivo": "credenciales_incompletas",
+            },
+        )
+
         return {
             "ok": False,
             "error": "Faltan credenciales"
         }
 
     if not supabase_config_ok():
+        registrar_evento_seguridad(
+            accion="LOGIN_FAIL",
+            request=request,
+            actor_email=str(email).strip().lower(),
+            detalle={
+                "resultado": "error",
+                "motivo": "supabase_no_configurado",
+            },
+        )
+
         return {
             "ok": False,
             "error": "Supabase no configurado"
@@ -2520,6 +2714,17 @@ async def login_usuario(payload: dict = Body(...)):
     response = requests.get(url, headers=_headers())
 
     if response.status_code != 200:
+        registrar_evento_seguridad(
+            accion="LOGIN_FAIL",
+            request=request,
+            actor_email=str(email).strip().lower(),
+            detalle={
+                "resultado": "error",
+                "motivo": "error_consulta_usuarios",
+                "status_code": response.status_code,
+            },
+        )
+
         return {
             "ok": False,
             "error": "Error en consulta"
@@ -2528,6 +2733,16 @@ async def login_usuario(payload: dict = Body(...)):
     data = response.json()
 
     if not data:
+        registrar_evento_seguridad(
+            accion="LOGIN_FAIL",
+            request=request,
+            actor_email=str(email).strip().lower(),
+            detalle={
+                "resultado": "fallido",
+                "motivo": "credenciales_invalidas",
+            },
+        )
+
         return {
             "ok": False,
             "error": "Credenciales inválidas"
@@ -2538,14 +2753,49 @@ async def login_usuario(payload: dict = Body(...)):
     licencia = validar_licencia_saas(user)
 
     if not licencia.get("ok"):
+        registrar_evento_seguridad(
+            accion="LOGIN_BLOCKED",
+            request=request,
+            actor_email=user.get("email"),
+            actor_rol=user.get("rol"),
+            tenant=user.get("id_cliente"),
+            detalle={
+                "resultado": "bloqueado",
+                "motivo": "licencia_saas",
+                "estado_licencia": licencia,
+            },
+        )
 
         return licencia
 
     if not verify_password(password, user.get("password", "")):
+        registrar_evento_seguridad(
+            accion="LOGIN_FAIL",
+            request=request,
+            actor_email=user.get("email"),
+            actor_rol=user.get("rol"),
+            tenant=user.get("id_cliente"),
+            detalle={
+                "resultado": "fallido",
+                "motivo": "credenciales_invalidas",
+            },
+        )
+
         return {
             "ok": False,
             "error": "Credenciales inválidas"
         }
+
+    registrar_evento_seguridad(
+        accion="LOGIN_OK",
+        request=request,
+        actor_email=user.get("email"),
+        actor_rol=user.get("rol"),
+        tenant=user.get("id_cliente"),
+        detalle={
+            "resultado": "exitoso",
+        },
+    )
 
     return {
         "ok": True,
