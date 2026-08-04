@@ -2983,6 +2983,18 @@ async def login_usuario(
     payload: dict = Body(...),
 ):
     
+    # H-023.3A — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=['email', 'password'],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     email = payload.get("email")
     password = payload.get("password")
 
@@ -3139,6 +3151,18 @@ async def crear_usuario_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+
+    # H-023.3A — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=['email', 'password', 'nombre'],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
 
     try:
 
@@ -4157,6 +4181,18 @@ async def reset_password_usuario_admin(
     payload: dict = Body(...),
     x_usuario_email: str = Header(default=None),
 ):
+    # H-023.3A — VALIDACIÓN JSON CENTRALIZADA
+    payload_ok, payload_detalle = validar_payload_json_argo(
+        payload,
+        campos_requeridos=['email', 'password'],
+    )
+
+    if not payload_ok:
+        return JSONResponse(
+            status_code=400,
+            content=payload_detalle,
+        )
+
     try:
 
         email_objetivo = str(payload.get("email") or "").strip().lower()
