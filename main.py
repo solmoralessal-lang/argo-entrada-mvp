@@ -2736,6 +2736,247 @@ def validar_limite_operaciones_plan(usuario: dict):
 
 
 
+
+# ============================================================
+# H-023.2 — VALIDACIÓN CENTRAL DE PAYLOADS JSON
+# ============================================================
+
+ARGO_JSON_MAX_BYTES = max(
+    1024,
+    int(os.getenv("ARGO_JSON_MAX_BYTES", "262144")),
+)
+
+ARGO_JSON_MAX_STRING_LENGTH = max(
+    64,
+    int(os.getenv("ARGO_JSON_MAX_STRING_LENGTH", "10000")),
+)
+
+ARGO_JSON_MAX_LIST_ITEMS = max(
+    1,
+    int(os.getenv("ARGO_JSON_MAX_LIST_ITEMS", "500")),
+)
+
+ARGO_JSON_MAX_OBJECT_KEYS = max(
+    1,
+    int(os.getenv("ARGO_JSON_MAX_OBJECT_KEYS", "200")),
+)
+
+ARGO_JSON_MAX_DEPTH = max(
+    1,
+    int(os.getenv("ARGO_JSON_MAX_DEPTH", "10")),
+)
+
+
+def _argo_validar_valor_json(
+    value,
+    *,
+    path: str,
+    depth: int,
+    errors: list,
+):
+    if depth > ARGO_JSON_MAX_DEPTH:
+        errors.append({
+            "codigo": "JSON_PROFUNDIDAD_EXCEDIDA",
+            "campo": path,
+            "error": (
+                "El payload excede la profundidad máxima permitida"
+            ),
+        })
+        return
+
+    if isinstance(value, dict):
+        if len(value) > ARGO_JSON_MAX_OBJECT_KEYS:
+            errors.append({
+                "codigo": "JSON_DEMASIADAS_CLAVES",
+                "campo": path,
+                "error": (
+                    "El objeto contiene demasiadas claves"
+                ),
+                "maximo": ARGO_JSON_MAX_OBJECT_KEYS,
+                "recibidas": len(value),
+            })
+            return
+
+        for key, item in value.items():
+            key_text = str(key)
+
+            if not key_text.strip():
+                errors.append({
+                    "codigo": "JSON_CLAVE_INVALIDA",
+                    "campo": path,
+                    "error": (
+                        "El payload contiene una clave vacía"
+                    ),
+                })
+                continue
+
+            child_path = (
+                f"{path}.{key_text}"
+                if path
+                else key_text
+            )
+
+            _argo_validar_valor_json(
+                item,
+                path=child_path,
+                depth=depth + 1,
+                errors=errors,
+            )
+
+        return
+
+    if isinstance(value, list):
+        if len(value) > ARGO_JSON_MAX_LIST_ITEMS:
+            errors.append({
+                "codigo": "JSON_LISTA_DEMASIADO_GRANDE",
+                "campo": path,
+                "error": (
+                    "La lista contiene demasiados elementos"
+                ),
+                "maximo": ARGO_JSON_MAX_LIST_ITEMS,
+                "recibidos": len(value),
+            })
+            return
+
+        for index, item in enumerate(value):
+            _argo_validar_valor_json(
+                item,
+                path=f"{path}[{index}]",
+                depth=depth + 1,
+                errors=errors,
+            )
+
+        return
+
+    if isinstance(value, str):
+        if len(value) > ARGO_JSON_MAX_STRING_LENGTH:
+            errors.append({
+                "codigo": "JSON_CADENA_DEMASIADO_LARGA",
+                "campo": path,
+                "error": (
+                    "La cadena excede la longitud máxima permitida"
+                ),
+                "maximo": ARGO_JSON_MAX_STRING_LENGTH,
+                "recibidos": len(value),
+            })
+
+        return
+
+    if value is None:
+        return
+
+    if isinstance(value, (bool, int, float)):
+        return
+
+    errors.append({
+        "codigo": "JSON_TIPO_NO_PERMITIDO",
+        "campo": path,
+        "error": (
+            "El payload contiene un tipo no permitido"
+        ),
+        "tipo": type(value).__name__,
+    })
+
+
+def validar_payload_json_argo(
+    payload,
+    *,
+    campos_requeridos=None,
+):
+    """
+    Valida forma, tamaño y complejidad de un payload JSON.
+
+    Retorna:
+    - válido
+    - detalle de validación
+    """
+    import json
+
+    if not isinstance(payload, dict):
+        return False, {
+            "ok": False,
+            "codigo": "JSON_OBJETO_REQUERIDO",
+            "error": (
+                "El cuerpo JSON debe ser un objeto"
+            ),
+        }
+
+    try:
+        raw = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except Exception:
+        return False, {
+            "ok": False,
+            "codigo": "JSON_NO_SERIALIZABLE",
+            "error": (
+                "El payload no contiene datos JSON válidos"
+            ),
+        }
+
+    if len(raw) > ARGO_JSON_MAX_BYTES:
+        return False, {
+            "ok": False,
+            "codigo": "JSON_DEMASIADO_GRANDE",
+            "error": (
+                "El cuerpo JSON excede el tamaño máximo permitido"
+            ),
+            "bytes": len(raw),
+            "maximo_bytes": ARGO_JSON_MAX_BYTES,
+        }
+
+    errors = []
+
+    _argo_validar_valor_json(
+        payload,
+        path="",
+        depth=1,
+        errors=errors,
+    )
+
+    requeridos = list(campos_requeridos or [])
+
+    for campo in requeridos:
+        valor = payload.get(campo)
+
+        if valor is None:
+            errors.append({
+                "codigo": "JSON_CAMPO_REQUERIDO",
+                "campo": campo,
+                "error": (
+                    f"El campo {campo} es requerido"
+                ),
+            })
+            continue
+
+        if isinstance(valor, str) and not valor.strip():
+            errors.append({
+                "codigo": "JSON_CAMPO_REQUERIDO",
+                "campo": campo,
+                "error": (
+                    f"El campo {campo} no puede estar vacío"
+                ),
+            })
+
+    if errors:
+        return False, {
+            "ok": False,
+            "codigo": "JSON_INVALIDO",
+            "error": (
+                "El payload contiene datos inválidos"
+            ),
+            "errores": errors,
+        }
+
+    return True, {
+        "ok": True,
+        "codigo": "JSON_VALIDO",
+        "bytes": len(raw),
+    }
+
+
 @app.post("/argo/login")
 async def login_usuario(
     request: Request,
