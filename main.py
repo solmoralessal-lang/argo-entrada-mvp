@@ -1075,6 +1075,7 @@ from argo_class_engine import build_output
 
 @app.post("/argo/pipeline/clasificar")
 async def argo_pipeline_clasificar(
+    request: Request,
     archivo_entrada: UploadFile = File(...),
     plantilla_control: UploadFile = File(...),
     descripcion: str = Form(""),
@@ -1082,6 +1083,18 @@ async def argo_pipeline_clasificar(
     id_operacion = None
     entrada_path = None
     control_path = None
+
+    sesion = getattr(request.state, "sesion_argo", None) or {}
+
+    cliente_id_sesion = str(
+        sesion.get("id_cliente") or ""
+    ).strip()
+
+    if not cliente_id_sesion:
+        raise HTTPException(
+            status_code=401,
+            detail="Tenant de sesión no disponible"
+        )
 
     try:
         # ID único end-to-end (AHORA sí dentro del try)
@@ -1266,8 +1279,8 @@ async def argo_pipeline_clasificar(
         try:
             print("DEBUG: entrando a guardado de historial")
 
-            cliente_id = "cliente_bodega_2"
-            cliente_nombre = "Bodega El Güero"
+            cliente_id = cliente_id_sesion
+            cliente_nombre = cliente_id_sesion
 
             pipeline_output_historial = {
                 "ok": True,
