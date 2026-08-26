@@ -1,0 +1,44 @@
+{
+  "timestamp": "20260826_164022",
+  "tenant": "PILOT_ARGO_001",
+  "resultado": "PASS",
+  "matriz_previa": "10/10 PASS",
+  "usuarios_oficiales_conservados": [
+    "pilot.admin@argo.com",
+    "pilot.operador@argo.com",
+    "pilot.supervisor@argo.com"
+  ],
+  "usuarios_temporales_objetivo": [
+    "pilot.escape.test@argo.com"
+  ],
+  "usuarios_temporales_eliminados": 1,
+  "operaciones_automaticas_objetivo": [
+    "OP-20260826-213637-567AF04D",
+    "OP-20260826-213641-D945AD49",
+    "OP-20260826-213646-4FC4A5E8"
+  ],
+  "filas_operaciones_eliminadas": 3,
+  "usuarios_finales_tenant": [
+    {
+      "email": "pilot.admin@argo.com",
+      "rol": "admin_cliente",
+      "activo": true,
+      "plan_saas": "ENTERPRISE"
+    },
+    {
+      "email": "pilot.operador@argo.com",
+      "rol": "operador",
+      "activo": true,
+      "plan_saas": "ENTERPRISE"
+    },
+    {
+      "email": "pilot.supervisor@argo.com",
+      "rol": "supervisor",
+      "activo": true,
+      "plan_saas": "ENTERPRISE"
+    }
+  ],
+  "operaciones_restantes_tenant": 0,
+  "backup_privado": "/tmp/ARGO_PILOT_CLEANUP_BACKUP_20260826_164022.json",
+  "nota": "Solo se eliminaron usuario temporal exacto y operaciones cuyos id_operacion provenían de P-001/P-002/P-003."
+}
