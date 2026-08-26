@@ -33,6 +33,7 @@ from utils_operacion import generar_id_operacion, escribir_log_operacion
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import re
+from pathlib import Path
 
 from argo_excel_report import generar_reporte_ejecutivo
 from datetime import datetime
@@ -180,6 +181,7 @@ from fastapi.responses import JSONResponse
 from argo_supabase_historial import (
     guardar_operacion_supabase,
     obtener_dashboard_supabase,
+    obtener_historial_supabase,
     aprobar_operacion_supabase,
     obtener_clientes_supabase,
 )
@@ -2010,7 +2012,7 @@ async def middleware_cabeceras_seguridad_argo(
         "strict-origin-when-cross-origin"
     )
     response.headers["Permissions-Policy"] = (
-        "camera=(), microphone=(), geolocation=(), "
+        "camera=(self), microphone=(), geolocation=(), "
         "payment=(), usb=()"
     )
     response.headers["Content-Security-Policy"] = (
@@ -2133,6 +2135,61 @@ async def aprobar_operacion(
             "ok": False,
             "error": str(e)
         }
+
+@app.get("/argo/me")
+async def argo_me(request: Request):
+    sesion = getattr(request.state, "sesion_argo", None)
+
+    if not sesion:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "error": "Sesión requerida",
+                "codigo": "AUTH_REQUERIDA",
+            }
+        )
+
+    email = str(sesion.get("email") or "").strip().lower()
+
+    user = obtener_usuario_rbac(email)
+
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "error": "Usuario no encontrado",
+                "codigo": "AUTH_USUARIO_NO_ENCONTRADO",
+            }
+        )
+
+    if user.get("activo") is False:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "ok": False,
+                "error": "Usuario inactivo",
+                "codigo": "AUTH_USUARIO_INACTIVO",
+            }
+        )
+
+    return {
+        "ok": True,
+        "usuario": {
+            "email": user["email"],
+            "nombre": user["nombre"],
+            "id_cliente": user["id_cliente"],
+            "rol": user["rol"],
+            "plan": obtener_plan_saas(user),
+            "limites": obtener_plan_saas(user).get("limites"),
+            "modulos": obtener_modulos_por_plan_y_rol(user),
+            "consumo": validar_limite_operaciones_plan(user),
+            "usuarios_plan": validar_limite_usuarios_plan(user),
+        }
+    }
+
+
 # =========================================
 # LOGIN USUARIO
 # =========================================
@@ -3109,6 +3166,25 @@ async def login_usuario(
         return {
             "ok": False,
             "error": "Credenciales inválidas"
+        }
+
+    if user.get("activo") is False:
+        registrar_evento_seguridad(
+            accion="LOGIN_BLOCKED",
+            request=request,
+            actor_email=user.get("email"),
+            actor_rol=user.get("rol"),
+            tenant=user.get("id_cliente"),
+            detalle={
+                "resultado": "bloqueado",
+                "motivo": "usuario_inactivo",
+            },
+        )
+
+        return {
+            "ok": False,
+            "error": "Usuario inactivo",
+            "codigo": "USER_INACTIVE"
         }
 
     registrar_evento_seguridad(
@@ -5565,6 +5641,28 @@ async def endpoint_dashboard(
                 "codigo": "TENANT_USER_NOT_FOUND"
             }
 
+        # Seguridad SaaS Enterprise:
+        # Dashboard debe hacer cumplir licencia y modulo
+        # tambien en backend, no solamente en frontend.
+        licencia = validar_licencia_saas(usuario_rbac)
+
+        if not licencia.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=licencia
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario_rbac,
+            "dashboard"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
+
         if usuario_rbac.get("activo") is False:
             return {
                 "ok": False,
@@ -6514,6 +6612,28 @@ async def procesar_desde_ocr(
 
         usuario_actual = obtener_usuario_rbac(x_usuario_email)
 
+        # Seguridad Enterprise:
+        # procesar_desde_ocr debe aplicar los mismos controles
+        # de licencia y módulo que /argo/ocr.
+        licencia = validar_licencia_saas(usuario_actual)
+
+        if not licencia.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=licencia
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario_actual,
+            "entrada_documental"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
+
         if usuario_actual:
 
             validacion_plan = validar_limite_operaciones_plan(usuario_actual)
@@ -6630,10 +6750,19 @@ async def procesar_desde_ocr(
             "cliente_id": cliente_id,
             "cliente_nombre": cliente_nombre_login,
             "id_operacion": id_operacion,
+
+            # Datos documentales normalizados
+            "shipment_id": tracking,
+            "tracking": tracking,
+            "proveedor": consolidado.get("proveedor"),
+            "descripcion": consolidado.get("descripcion"),
+
+            # Identidad operativa
             "usuario_email": usuario_email_operacion,
             "operador": operador_operacion,
             "creado_por": usuario_email_operacion,
             "rol_operador": rol_operador,
+
             "fecha": timestamp_operacion,
             "timestamp_local": timestamp_operacion,
             "ocr": ocr,
@@ -6753,6 +6882,292 @@ async def procesar_desde_ocr(
             "ok": False,
             "error": str(e),
         }
+
+
+
+# =========================================================
+# CENTRO DE REPORTES ARGO - ENTERPRISE / PRO
+# =========================================================
+
+@app.get("/argo/reportes")
+async def listar_reportes_argo(
+    request: Request,
+):
+    try:
+        x_usuario_email = request.headers.get("x-usuario-email")
+        x_cliente_id = request.headers.get("x-cliente-id")
+
+        permitido, usuario_rbac, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_APROBACION,
+            cliente_id=x_cliente_id,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo,
+                    "codigo": "RBAC_DENY",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario_rbac,
+            "reportes",
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo,
+            )
+
+        rol = str(usuario_rbac.get("rol") or "").lower()
+
+        # El tenant efectivo siempre se obtiene de la sesión/RBAC.
+        # Master admin puede conservar el tenant de sesión para esta consulta.
+        tenant_efectivo = (
+            x_cliente_id
+            if rol == "master_admin"
+            else usuario_rbac.get("id_cliente")
+        )
+
+        operaciones = obtener_historial_supabase(
+            tenant_efectivo
+        )
+
+        reportes = []
+
+        for op in operaciones:
+            reporte = op.get("reporte_ejecutivo") or {}
+
+            if not isinstance(reporte, dict):
+                reporte = {}
+
+            archivo = (
+                reporte.get("archivo")
+                or reporte.get("file_name")
+            )
+
+            ruta = reporte.get("ruta")
+
+            if not archivo and ruta:
+                archivo = os.path.basename(str(ruta))
+
+            # Solo publicamos operaciones que realmente tengan
+            # evidencia de reporte ejecutivo asociado.
+            if not archivo:
+                continue
+
+            reportes.append({
+                "id_operacion": op.get("id_operacion"),
+                "cliente_id": op.get("cliente_id"),
+                "cliente_nombre": op.get("cliente_nombre"),
+                "estatus_global": op.get("estatus_global"),
+                "timestamp_local": op.get("timestamp_local"),
+                "archivo": archivo,
+                "descarga": (
+                    f"/argo/reportes/descargar/"
+                    f"{op.get('id_operacion')}"
+                ),
+                "storage_disponible": bool(
+                    (reporte.get("storage") or {}).get(
+                        "signed_url"
+                    )
+                ),
+            })
+
+        reportes.sort(
+            key=lambda r: str(
+                r.get("timestamp_local") or ""
+            ),
+            reverse=True,
+        )
+
+        return {
+            "ok": True,
+            "tenant": tenant_efectivo,
+            "total": len(reportes),
+            "reportes": reportes,
+        }
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e),
+                "codigo": "REPORTES_ERROR",
+            },
+        )
+
+
+@app.get("/argo/reportes/descargar/{id_operacion}")
+async def descargar_reporte_argo(
+    id_operacion: str,
+    request: Request,
+):
+    try:
+        x_usuario_email = request.headers.get("x-usuario-email")
+        x_cliente_id = request.headers.get("x-cliente-id")
+
+        permitido, usuario_rbac, motivo = validar_permiso_rbac(
+            email=x_usuario_email,
+            roles_permitidos=ROLES_APROBACION,
+            cliente_id=x_cliente_id,
+        )
+
+        if not permitido:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": motivo,
+                    "codigo": "RBAC_DENY",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario_rbac,
+            "reportes",
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo,
+            )
+
+        rol = str(usuario_rbac.get("rol") or "").lower()
+
+        tenant_efectivo = (
+            x_cliente_id
+            if rol == "master_admin"
+            else usuario_rbac.get("id_cliente")
+        )
+
+        operaciones = obtener_historial_supabase(
+            tenant_efectivo
+        )
+
+        operacion = next(
+            (
+                op for op in operaciones
+                if str(op.get("id_operacion") or "")
+                == str(id_operacion)
+            ),
+            None,
+        )
+
+        if not operacion:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "ok": False,
+                    "error": "Operación no encontrada",
+                    "codigo": "OPERACION_NO_ENCONTRADA",
+                },
+            )
+
+        reporte = operacion.get("reporte_ejecutivo") or {}
+
+        if not isinstance(reporte, dict):
+            reporte = {}
+
+        archivo = (
+            reporte.get("archivo")
+            or reporte.get("file_name")
+        )
+
+        ruta_reporte = reporte.get("ruta")
+
+        if not archivo and ruta_reporte:
+            archivo = os.path.basename(
+                str(ruta_reporte)
+            )
+
+        if not archivo:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "ok": False,
+                    "error": (
+                        "La operación no tiene reporte ejecutivo"
+                    ),
+                    "codigo": "REPORTE_NO_DISPONIBLE",
+                },
+            )
+
+        # Defensa contra path traversal.
+        archivo_seguro = os.path.basename(
+            str(archivo)
+        )
+
+        candidatos = [
+            os.path.join("outputs", archivo_seguro),
+            os.path.join("salidas", archivo_seguro),
+        ]
+
+        ruta_final = next(
+            (
+                ruta for ruta in candidatos
+                if os.path.isfile(ruta)
+            ),
+            None,
+        )
+
+        if not ruta_final:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "ok": False,
+                    "error": "Archivo de reporte no encontrado",
+                    "codigo": "ARCHIVO_REPORTE_NO_ENCONTRADO",
+                },
+            )
+
+        extension = Path(archivo_seguro).suffix.lower()
+
+        media_type = {
+            ".pdf": "application/pdf",
+            ".xlsx": (
+                "application/vnd.openxmlformats-"
+                "officedocument.spreadsheetml.sheet"
+            ),
+            ".csv": "text/csv",
+        }.get(
+            extension,
+            "application/octet-stream",
+        )
+
+        guardar_auditoria_admin(
+            accion="DESCARGA_REPORTE",
+            actor_email=x_usuario_email,
+            actor_rol=rol,
+            tenant=tenant_efectivo,
+            detalle={
+                "id_operacion": id_operacion,
+                "archivo": archivo_seguro,
+            },
+        )
+
+        return FileResponse(
+            path=ruta_final,
+            filename=archivo_seguro,
+            media_type=media_type,
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e),
+                "codigo": "DESCARGA_REPORTE_ERROR",
+            },
+        )
 
 
 # =========================================================
@@ -7194,40 +7609,148 @@ def _argo_connect_get_valor(op, campo):
         return ""
 
     aliases = {
-        "tracking": ["tracking", "tracking_number", "shipment_id"],
+        "tracking": ["tracking", "tracking_number"],
         "cliente": ["cliente", "cliente_nombre", "customer", "consignee"],
         "cliente_nombre": ["cliente_nombre", "cliente", "customer"],
         "proveedor": ["proveedor", "supplier", "vendor", "shipper"],
-        "descripcion": ["descripcion", "mercancia", "descripcion_soporte", "product_description"],
-        "fraccion_tigie": ["fraccion_tigie", "fraccion_sugerida", "fraccion", "fraccion_arancelaria"],
+        "descripcion": [
+            "descripcion",
+            "mercancia",
+            "descripcion_soporte",
+            "product_description",
+        ],
+        "fraccion_tigie": [
+            "fraccion_tigie",
+            "fraccion_sugerida",
+            "fraccion",
+            "fraccion_arancelaria",
+        ],
         "pais_origen": ["pais_origen", "country_of_origin", "origin"],
         "peso": ["peso", "peso_total", "weight", "gross_weight"],
-        "cantidad": ["cantidad", "cantidad_bultos", "total_bultos", "qty", "quantity"],
-        "invoice_no": ["invoice_no", "factura", "invoice", "invoice_number"],
-        "packing_list_no": ["packing_list_no", "packing_list", "packing_number"],
-        "bl_awb_no": ["bl_awb_no", "awb", "bl", "bill_of_lading"],
-        "valor_comercial": ["valor_comercial", "valor_aduana", "invoice_value", "commercial_value"],
-        "score_documental_global": ["score_documental_global", "score_documental"],
-        "operador": ["operador", "created_by", "usuario", "usuario_email"],
+        "cantidad": [
+            "cantidad",
+            "cantidad_bultos",
+            "total_bultos",
+            "qty",
+            "quantity",
+        ],
+        "invoice_no": [
+            "invoice_no",
+            "factura",
+            "invoice",
+            "invoice_number",
+        ],
+        "packing_list_no": [
+            "packing_list_no",
+            "packing_list",
+            "packing_number",
+        ],
+        "bl_awb_no": [
+            "bl_awb_no",
+            "awb",
+            "bl",
+            "bill_of_lading",
+        ],
+        "valor_comercial": [
+            "valor_comercial",
+            "valor_aduana",
+            "invoice_value",
+            "commercial_value",
+        ],
+        "score_documental_global": [
+            "score_documental_global",
+            "score_documental",
+        ],
+        "operador": [
+            "operador",
+            "created_by",
+            "usuario",
+            "usuario_email",
+        ],
     }
+
+    def get_path(data, path):
+        actual = data
+
+        for key in path:
+            if not isinstance(actual, dict):
+                return None
+
+            actual = actual.get(key)
+
+            if actual in [None, ""]:
+                return None
+
+        return actual
 
     posibles = [campo] + aliases.get(campo, [])
 
+    v = ""
+
+    # 1. Campos directos / aliases en raíz
     for key in posibles:
         if key in op and op.get(key) not in [None, ""]:
             v = op.get(key)
             break
-    else:
-        v = ""
+
+    # 2. Fallbacks semánticos para datos históricos anidados
+    if v in [None, ""]:
+        nested_paths = {
+            "descripcion": [
+                ("generacion", "entrada", "descripcion"),
+                ("ocr", "consolidado", "descripcion"),
+                (
+                    "payload_operacion",
+                    "generacion",
+                    "entrada",
+                    "descripcion",
+                ),
+                (
+                    "payload_operacion",
+                    "ocr",
+                    "consolidado",
+                    "descripcion",
+                ),
+            ],
+            "tracking": [
+                ("ocr", "consolidado", "tracking"),
+                (
+                    "payload_operacion",
+                    "ocr",
+                    "consolidado",
+                    "tracking",
+                ),
+            ],
+        }
+
+        for path in nested_paths.get(campo, []):
+            candidato = get_path(op, path)
+
+            if candidato not in [None, ""]:
+                v = candidato
+                break
 
     if isinstance(v, dict):
-        v = v.get("valor") or v.get("value") or v.get("texto") or ""
+        v = (
+            v.get("valor")
+            or v.get("value")
+            or v.get("texto")
+            or ""
+        )
+
     if isinstance(v, list):
-        v = ", ".join(str(x) for x in v if x not in [None, ""])
+        v = ", ".join(
+            str(x)
+            for x in v
+            if x not in [None, ""]
+        )
+
     if isinstance(v, bool):
         return "SI" if v else "NO"
+
     if v is None:
         return ""
+
     return v
 
 def _argo_connect_user(request):
@@ -7245,7 +7768,25 @@ async def argo_connect_catalogo(request: Request):
     try:
         usuario = _argo_connect_user(request)
         if not usuario:
-            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Usuario requerido",
+                    "codigo": "USUARIO_REQUERIDO",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario,
+            "argo_connect"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
 
         grupos = {}
         for c in ARGO_CONNECT_CATALOGO:
@@ -7271,7 +7812,25 @@ async def argo_connect_listar_plantillas(request: Request):
     try:
         usuario = _argo_connect_user(request)
         if not usuario:
-            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Usuario requerido",
+                    "codigo": "USUARIO_REQUERIDO",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario,
+            "argo_connect"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
 
         rol = str(usuario.get("rol") or "").lower()
         tenant = _argo_connect_tenant(usuario)
@@ -7289,7 +7848,25 @@ async def argo_connect_crear_plantilla(request: Request, payload: dict):
     try:
         usuario = _argo_connect_user(request)
         if not usuario:
-            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Usuario requerido",
+                    "codigo": "USUARIO_REQUERIDO",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario,
+            "argo_connect"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
 
         tenant = _argo_connect_tenant(usuario)
         nombre = str(payload.get("nombre") or "").strip()
@@ -7331,7 +7908,25 @@ async def argo_connect_actualizar_plantilla(plantilla_id: str, request: Request,
     try:
         usuario = _argo_connect_user(request)
         if not usuario:
-            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Usuario requerido",
+                    "codigo": "USUARIO_REQUERIDO",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario,
+            "argo_connect"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
 
         rol = str(usuario.get("rol") or "").lower()
         tenant = _argo_connect_tenant(usuario)
@@ -7363,7 +7958,25 @@ async def argo_connect_eliminar_plantilla(plantilla_id: str, request: Request):
     try:
         usuario = _argo_connect_user(request)
         if not usuario:
-            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Usuario requerido",
+                    "codigo": "USUARIO_REQUERIDO",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario,
+            "argo_connect"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
 
         rol = str(usuario.get("rol") or "").lower()
         tenant = _argo_connect_tenant(usuario)
@@ -7393,7 +8006,25 @@ async def argo_connect_exportar(request: Request, payload: dict):
     try:
         usuario = _argo_connect_user(request)
         if not usuario:
-            return JSONResponse(status_code=403, content={"ok": False, "error": "Usuario requerido"})
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Usuario requerido",
+                    "codigo": "USUARIO_REQUERIDO",
+                },
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario,
+            "argo_connect"
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo
+            )
 
         rol = str(usuario.get("rol") or "").lower()
         tenant = _argo_connect_tenant(usuario)
