@@ -1,0 +1,105 @@
+{
+  "tenant": "PILOT_ARGO_001",
+  "total": 10,
+  "pass": 10,
+  "fail": 0,
+  "results": [
+    {
+      "id": "P-001",
+      "name": "Entrada limpia",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "id_operacion": "OP-20260826-213637-567AF04D",
+        "ok": true
+      }
+    },
+    {
+      "id": "P-002",
+      "name": "Entrada crítica",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "id_operacion": "OP-20260826-213641-D945AD49",
+        "ok": true
+      }
+    },
+    {
+      "id": "P-003",
+      "name": "Entrada sucia",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "id_operacion": "OP-20260826-213646-4FC4A5E8",
+        "ok": true
+      }
+    },
+    {
+      "id": "P-004",
+      "name": "ARGO Control ejecutado dentro del pipeline",
+      "status": "PASS",
+      "detail": "3 pipeline(s) completados"
+    },
+    {
+      "id": "P-005",
+      "name": "Usuario sin sesión",
+      "status": "PASS",
+      "detail": "HTTP 401"
+    },
+    {
+      "id": "P-006",
+      "name": "Token inválido",
+      "status": "PASS",
+      "detail": "HTTP 401"
+    },
+    {
+      "id": "P-007",
+      "name": "Aislamiento tenant en identidades",
+      "status": "PASS",
+      "detail": {
+        "admin": "PILOT_ARGO_001",
+        "supervisor": "PILOT_ARGO_001",
+        "operador": "PILOT_ARGO_001"
+      }
+    },
+    {
+      "id": "P-008",
+      "name": "Admin crea usuario externo",
+      "status": "PASS",
+      "detail": [
+        {
+          "email": "pilot.escape.test@argo.com",
+          "id_cliente": "PILOT_ARGO_001",
+          "rol": "operador",
+          "activo": true
+        }
+      ]
+    },
+    {
+      "id": "P-009",
+      "name": "Supervisor puede intentar aprobación",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "response": {
+          "ok": false,
+          "error": "No se encontró operación para aprobar: TEST-PILOT-APPROVAL"
+        }
+      }
+    },
+    {
+      "id": "P-010",
+      "name": "Operador no puede aprobar",
+      "status": "PASS",
+      "detail": {
+        "http": 200,
+        "response": {
+          "ok": false,
+          "error": "Permisos insuficientes",
+          "codigo": "RBAC_DENY",
+          "rol_detectado": "operador"
+        }
+      }
+    }
+  ]
+}
