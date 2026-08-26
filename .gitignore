@@ -64,3 +64,11 @@ coverage/
 # No ignorar el frontend compilado utilizado por ARGO
 !dist/
 !dist/**
+
+# Certificados y llaves locales
+certs/
+*.key
+*.pem
+*.p12
+*.pfx
+*.bak_*
