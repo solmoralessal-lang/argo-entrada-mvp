@@ -6364,6 +6364,389 @@ Reglas obligatorias:
         "resultados": resultados
     }
 
+
+# =========================================================
+# ARGO CAMARA PRO v2
+# OCR ESPECIALIZADO EN INSPECCION FISICA DE MERCANCIA
+# Pilot branch only - P002
+# =========================================================
+
+@app.post("/argo/ocr_mercancia")
+async def argo_ocr_mercancia(
+    request: Request,
+    archivo1: UploadFile = File(...),
+):
+    """
+    OCR especializado en etiquetas y evidencia fisica de mercancia.
+
+    Este flujo es independiente de /argo/ocr, que permanece dedicado
+    al procesamiento documental certificado de ARGO v1.0.
+    """
+
+    import base64
+    import json
+    import re
+
+    try:
+        # -------------------------------------------------
+        # AUTORIZACION / TENANT
+        # -------------------------------------------------
+
+        x_usuario_email = request.headers.get("x-usuario-email")
+
+        usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+        licencia = validar_licencia_saas(usuario_actual)
+
+        if not licencia.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=licencia,
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario_actual,
+            "entrada_documental",
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo,
+            )
+
+        sesion = getattr(request.state, "sesion_argo", {}) or {}
+
+        cliente_id = (
+            sesion.get("id_cliente")
+            or usuario_actual.get("id_cliente")
+            or request.headers.get("x-cliente-id")
+        )
+
+        if not cliente_id:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Tenant no disponible en sesion",
+                    "codigo": "TENANT_REQUIRED",
+                },
+            )
+
+        # -------------------------------------------------
+        # ARCHIVO
+        # -------------------------------------------------
+
+        contenido = await archivo1.read()
+
+        if not contenido:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": "Imagen vacia",
+                    "codigo": "IMAGEN_VACIA",
+                },
+            )
+
+        max_bytes = 25 * 1024 * 1024
+
+        if len(contenido) > max_bytes:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "ok": False,
+                    "error": "La imagen supera el limite de 25 MB",
+                    "codigo": "IMAGEN_DEMASIADO_GRANDE",
+                },
+            )
+
+        content_type = (
+            getattr(archivo1, "content_type", None)
+            or "image/jpeg"
+        ).lower()
+
+        tipos_permitidos = {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp",
+        }
+
+        if content_type not in tipos_permitidos:
+            return JSONResponse(
+                status_code=415,
+                content={
+                    "ok": False,
+                    "error": f"Tipo de imagen no permitido: {content_type}",
+                    "codigo": "TIPO_IMAGEN_NO_PERMITIDO",
+                },
+            )
+
+        if client is None:
+            raise RuntimeError("OPENAI_API_KEY no configurada")
+
+        imagen_base64 = base64.b64encode(contenido).decode("utf-8")
+
+        # -------------------------------------------------
+        # OCR / VISION MERCANCIA
+        # -------------------------------------------------
+
+        prompt = """
+Eres ARGO Vision, un sistema especializado en inspeccion fisica
+de mercancia para bodegas y operaciones logisticas.
+
+Analiza exclusivamente la evidencia visible en la fotografia.
+
+Debes responder SOLAMENTE un JSON valido.
+No uses markdown.
+No agregues explicaciones fuera del JSON.
+
+Devuelve EXACTAMENTE esta estructura:
+
+{
+  "marca": null,
+  "modelo": null,
+  "numero_parte": null,
+  "lote": null,
+  "serie": null,
+  "pais_origen": null,
+  "cantidad_visible": null,
+  "descripcion": null,
+  "purchase_order": null,
+  "partida": null,
+  "unidad": null,
+  "texto_adicional": [],
+  "confianza": {
+    "marca": null,
+    "modelo": null,
+    "numero_parte": null,
+    "lote": null,
+    "serie": null,
+    "pais_origen": null,
+    "cantidad_visible": null,
+    "descripcion": null
+  },
+  "requiere_confirmacion": [],
+  "observaciones": []
+}
+
+REGLAS OBLIGATORIAS:
+
+1. No inventes ningun dato.
+
+2. Si un campo no aparece claramente visible, devuelve null.
+
+3. Distingue entre:
+   - dato visible y legible;
+   - dato ambiguo;
+   - dato que simplemente no aparece en la etiqueta.
+
+4. numero_parte:
+   puede aparecer como Part Number, Part No, P/N, PN, Item,
+   Item Number, Material Number o referencias equivalentes.
+
+5. cantidad_visible:
+   representa cantidad de piezas/unidades del producto cuando la
+   etiqueta lo indique.
+   Ejemplos:
+   Ordered 24 Each -> 24
+   Shipped 24 Each -> 24
+   Qty 12 -> 12
+
+6. No confundas cantidad de piezas con numero de bultos.
+
+7. lote:
+   puede aparecer como Lot, Batch, Lot No o equivalentes.
+
+8. serie:
+   puede aparecer como Serial, Serial No, S/N o equivalentes.
+
+9. pais_origen:
+   solo devuelve un pais cuando la etiqueta indique explicitamente
+   Country of Origin, Made in, Origin o equivalente.
+
+10. purchase_order:
+    puede aparecer como Purchase Order, PO, P.O. o equivalente.
+
+11. partida:
+    puede aparecer como Line, Line Item, Item Line o equivalente.
+
+12. descripcion:
+    conserva la descripcion comercial del producto lo mas fielmente
+    posible.
+
+13. confianza:
+    para cada campo usa un numero entre 0 y 1.
+    Usa null cuando el campo no exista en la imagen.
+
+14. Si la confianza de un campo critico es menor a 0.90,
+    agrega el nombre exacto del campo a requiere_confirmacion.
+
+15. Son campos criticos:
+    numero_parte
+    lote
+    serie
+    pais_origen
+    cantidad_visible
+    modelo
+
+16. Caracteres potencialmente ambiguos como:
+    O/0
+    I/1
+    L/1
+    B/8
+    S/5
+    Z/2
+    deben bajar la confianza cuando no sean perfectamente claros.
+
+17. texto_adicional:
+    puede contener otros datos utiles que realmente aparezcan visibles
+    y que no correspondan a los campos anteriores.
+
+18. No conviertas la ausencia de lote o serie en un error.
+    Si no aparecen, simplemente devuelve null.
+
+19. Responde solamente JSON valido.
+"""
+
+        response = client.responses.create(
+            model="gpt-5.4",
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": prompt,
+                        },
+                        {
+                            "type": "input_image",
+                            "image_url": (
+                                f"data:{content_type};base64,{imagen_base64}"
+                            ),
+                        },
+                    ],
+                }
+            ],
+        )
+
+        texto = (response.output_text or "").strip()
+
+        # -------------------------------------------------
+        # PARSEO SEGURO
+        # -------------------------------------------------
+
+        try:
+            lectura = json.loads(texto)
+
+        except Exception:
+
+            match = re.search(r"\{.*\}", texto, re.DOTALL)
+
+            if not match:
+                return JSONResponse(
+                    status_code=502,
+                    content={
+                        "ok": False,
+                        "error": "Respuesta OCR no contiene JSON valido",
+                        "codigo": "OCR_JSON_INVALIDO",
+                    },
+                )
+
+            try:
+                lectura = json.loads(match.group(0))
+
+            except Exception:
+                return JSONResponse(
+                    status_code=502,
+                    content={
+                        "ok": False,
+                        "error": "No fue posible interpretar respuesta OCR",
+                        "codigo": "OCR_JSON_INVALIDO",
+                    },
+                )
+
+        # -------------------------------------------------
+        # NORMALIZACION DEFENSIVA
+        # -------------------------------------------------
+
+        campos = [
+            "marca",
+            "modelo",
+            "numero_parte",
+            "lote",
+            "serie",
+            "pais_origen",
+            "cantidad_visible",
+            "descripcion",
+            "purchase_order",
+            "partida",
+            "unidad",
+        ]
+
+        for campo in campos:
+            lectura.setdefault(campo, None)
+
+        if not isinstance(lectura.get("texto_adicional"), list):
+            lectura["texto_adicional"] = []
+
+        if not isinstance(lectura.get("requiere_confirmacion"), list):
+            lectura["requiere_confirmacion"] = []
+
+        if not isinstance(lectura.get("observaciones"), list):
+            lectura["observaciones"] = []
+
+        if not isinstance(lectura.get("confianza"), dict):
+            lectura["confianza"] = {}
+
+        for campo in [
+            "marca",
+            "modelo",
+            "numero_parte",
+            "lote",
+            "serie",
+            "pais_origen",
+            "cantidad_visible",
+            "descripcion",
+        ]:
+            lectura["confianza"].setdefault(campo, None)
+
+        # -------------------------------------------------
+        # RESPUESTA
+        # -------------------------------------------------
+
+        return {
+            "ok": True,
+            "modulo": "ARGO_OCR_MERCANCIA",
+            "version": "2.0-pilot",
+            "cliente_id": cliente_id,
+            "archivo": getattr(
+                archivo1,
+                "filename",
+                "captura_mercancia.jpg",
+            ),
+            "bytes_recibidos": len(contenido),
+            "lectura": lectura,
+            "requiere_revision_humana": bool(
+                lectura.get("requiere_confirmacion")
+            ),
+        }
+
+    except Exception as e:
+
+        print("ERROR OCR MERCANCIA:", str(e))
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e),
+                "codigo": "OCR_MERCANCIA_ERROR",
+            },
+        )
+
+
 @app.post("/argo/generar_desde_ocr")
 async def argo_generar_desde_ocr(payload: dict = Body(...)):
     from datetime import datetime
