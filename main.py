@@ -12,6 +12,8 @@ from argo_orquestador import (
     nueva_operacion,
     agregar_partida,
     establecer_referencia_documental,
+    asignar_evidencia_a_operacion,
+    finalizar_partidas_operacion,
 )
 
 
@@ -5862,7 +5864,7 @@ def validar_imagen_ocr_argo(
 
 
 
-# === P004-PATCH-B: OCR -> OPERACION MULTIPARTE ===
+# === P004-PATCH-C: OCR -> OPERACION INTELIGENTE MULTIPARTE ===
 
 def construir_operacion_multiparte_desde_ocr(
     *,
@@ -5871,17 +5873,15 @@ def construir_operacion_multiparte_desde_ocr(
     resultados: list,
 ) -> dict:
     """
-    Construye el expediente multiparte P004 a partir del resultado
-    del OCR masivo.
+    Convierte el OCR masivo en una operación P004.
 
-    Reglas:
-    - Cada partida documental se mantiene independiente.
-    - No mezcla datos entre partidas.
-    - Conserva archivo fuente.
-    - Conserva todas las evidencias OCR de la operacion.
-    - Todavia NO interpreta automaticamente una imagen como
-      evidencia fisica definitiva.
-    - La asociacion fisica se realizara posteriormente por P004.
+    Flujo:
+    - crea referencias documentales por partida;
+    - clasifica evidencias por tipo;
+    - registra documentos;
+    - asocia automáticamente evidencia física a partidas;
+    - conserva excepciones para revisión humana;
+    - consolida la realidad física de cada partida.
     """
 
     consolidado = consolidado or {}
@@ -5898,7 +5898,7 @@ def construir_operacion_multiparte_desde_ocr(
         f"P004-{id_base}"
     )
 
-    operacion["origen"] = "ARGO_OCR"
+    operacion["origen"] = "ARGO_OCR_MASIVO"
     operacion["tracking"] = consolidado.get("tracking")
 
     operacion["datos_generales"] = {
@@ -5915,7 +5915,7 @@ def construir_operacion_multiparte_desde_ocr(
     }
 
     # --------------------------------------------------------
-    # PARTIDAS DOCUMENTALES
+    # REFERENCIA DOCUMENTAL POR PARTIDA
     # --------------------------------------------------------
 
     for datos_partida in partidas_esperadas:
@@ -5942,6 +5942,7 @@ def construir_operacion_multiparte_desde_ocr(
         establecer_referencia_documental(
             partida,
             referencia,
+            fuente=datos_partida.get("archivo_fuente"),
         )
 
         partida["archivo_fuente_documental"] = (
@@ -5951,52 +5952,276 @@ def construir_operacion_multiparte_desde_ocr(
         partida["origen_referencia"] = "OCR_DOCUMENTAL"
 
     # --------------------------------------------------------
-    # INVENTARIO DE EVIDENCIAS OCR
+    # CLASIFICAR / PROCESAR EVIDENCIAS
     # --------------------------------------------------------
 
-    evidencias_ocr = []
+    documentos = []
+    evidencias_clasificadas = []
+    resultados_asociacion = []
 
-    for indice, item in enumerate(resultados, start=1):
+    conteo_tipos = {
+        "DOCUMENTO": 0,
+        "MERCANCIA": 0,
+        "COMPLEMENTARIA": 0,
+        "INCIERTA": 0,
+    }
+
+    for indice, item in enumerate(
+        resultados,
+        start=1,
+    ):
 
         if not isinstance(item, dict):
             continue
 
         data = item.get("ocr_json") or {}
 
-        evidencia = {
-            "evidencia_id": f"OCR-{indice:03d}",
-            "archivo": item.get("archivo"),
-            "ocr_json": data,
-            "tipo_evidencia": "OCR_SIN_RESOLVER",
-            "estado_asociacion": "PENDIENTE",
-            "requiere_clasificacion": True,
+        tipo = str(
+            data.get("tipo_evidencia")
+            or "INCIERTA"
+        ).strip().upper()
+
+        if tipo not in conteo_tipos:
+            tipo = "INCIERTA"
+
+        conteo_tipos[tipo] += 1
+
+        evidencia_id = f"OCR-{indice:03d}"
+        archivo = item.get("archivo")
+
+        registro = {
+            "evidencia_id": evidencia_id,
+            "archivo": archivo,
+            "tipo_evidencia": tipo,
+            "subtipo_evidencia":
+                data.get("subtipo_evidencia"),
+            "confianza_tipo":
+                data.get("confianza_tipo"),
+            "estado_asociacion": "NO_APLICA",
         }
 
-        evidencias_ocr.append(evidencia)
+        # DOCUMENTO
+        if tipo == "DOCUMENTO":
 
-    operacion["evidencias_ocr"] = evidencias_ocr
+            documento = {
+                **registro,
+                "partidas_detectadas":
+                    data.get("partidas_esperadas", []),
+            }
+
+            documentos.append(documento)
+
+            registro["estado_asociacion"] = (
+                "REFERENCIA_DOCUMENTAL"
+            )
+
+        # MERCANCIA / COMPLEMENTARIA
+        elif tipo in {
+            "MERCANCIA",
+            "COMPLEMENTARIA",
+        }:
+
+            lectura = (
+                data.get("lectura_fisica")
+                if isinstance(
+                    data.get("lectura_fisica"),
+                    dict,
+                )
+                else {}
+            )
+
+            datos_detectados = {
+                "purchase_order":
+                    lectura.get("purchase_order"),
+                "partida":
+                    lectura.get("partida"),
+                "numero_parte":
+                    lectura.get("numero_parte"),
+                "cantidad":
+                    lectura.get("cantidad_visible"),
+                "unidad":
+                    lectura.get("unidad"),
+                "descripcion":
+                    lectura.get("descripcion"),
+                "marca":
+                    lectura.get("marca"),
+                "modelo":
+                    lectura.get("modelo"),
+                "lote":
+                    lectura.get("lote"),
+                "serie":
+                    lectura.get("serie"),
+                "pais_origen":
+                    lectura.get("pais_origen"),
+            }
+
+            evidencia_fisica = {
+                "evidencia_id": evidencia_id,
+                "archivo": archivo,
+                "tipo_evidencia": tipo,
+                "datos_detectados": datos_detectados,
+                "confianza":
+                    lectura.get("confianza", {}),
+                "requiere_confirmacion":
+                    lectura.get(
+                        "requiere_confirmacion",
+                        [],
+                    ),
+                "observaciones":
+                    lectura.get("observaciones", []),
+            }
+
+            resultado_asociacion = (
+                asignar_evidencia_a_operacion(
+                    operacion,
+                    evidencia_fisica,
+                    score_minimo=40,
+                )
+            )
+
+            registro["estado_asociacion"] = (
+                resultado_asociacion.get("estado")
+            )
+
+            registro["partida_indice"] = (
+                resultado_asociacion.get(
+                    "partida_indice"
+                )
+            )
+
+            registro["score_asociacion"] = (
+                resultado_asociacion.get("score")
+            )
+
+            resultados_asociacion.append({
+                "evidencia_id": evidencia_id,
+                "archivo": archivo,
+                "tipo_evidencia": tipo,
+                **resultado_asociacion,
+            })
+
+        # INCIERTA
+        else:
+
+            registro["estado_asociacion"] = (
+                "REQUIERE_REVISION"
+            )
+
+            operacion.setdefault(
+                "excepciones_humanas",
+                [],
+            ).append({
+                "codigo":
+                    "TIPO_EVIDENCIA_INCIERTO",
+                "evidencia_id":
+                    evidencia_id,
+                "archivo":
+                    archivo,
+                "confianza_tipo":
+                    data.get("confianza_tipo"),
+                "requiere_revision_humana":
+                    True,
+            })
+
+        evidencias_clasificadas.append(
+            registro
+        )
+
+    operacion["documentos"] = documentos
+    operacion["evidencias_ocr"] = (
+        evidencias_clasificadas
+    )
 
     # --------------------------------------------------------
-    # ESTADO INICIAL
+    # RESUMEN
     # --------------------------------------------------------
 
-    total_partidas = len(operacion.get("partidas", []) or [])
-    total_evidencias = len(evidencias_ocr)
+    asociadas = sum(
+        1
+        for r in resultados_asociacion
+        if r.get("estado") == "ASOCIADA"
+    )
 
-    if total_partidas:
-        estado = "REFERENCIA_DOCUMENTAL_CREADA"
-    elif total_evidencias:
+    ambiguas = sum(
+        1
+        for r in resultados_asociacion
+        if r.get("estado") == "AMBIGUA"
+    )
+
+    sin_asociar = sum(
+        1
+        for r in resultados_asociacion
+        if r.get("estado") == "SIN_ASOCIAR"
+    )
+
+    partidas_con_evidencia = sum(
+        1
+        for partida in operacion.get(
+            "partidas",
+            [],
+        )
+        if len(
+            partida.get("evidencias", [])
+        ) > 0
+    )
+
+    if operacion.get("excepciones_humanas"):
+        estado = "REQUIERE_REVISION"
+
+    elif len(operacion.get("partidas", [])) == 0:
         estado = "SIN_PARTIDAS_DOCUMENTALES"
+
+    elif asociadas == 0:
+        estado = "SIN_EVIDENCIA_FISICA_ASOCIADA"
+
     else:
-        estado = "SIN_EVIDENCIA"
+        estado = "EVIDENCIA_FISICA_ASOCIADA"
 
     operacion["estado"] = estado
 
     operacion["resumen_ocr_multiparte"] = {
-        "partidas_documentales": total_partidas,
-        "evidencias_ocr": total_evidencias,
-        "evidencias_pendientes_clasificacion": total_evidencias,
-        "estado": estado,
+        "partidas_documentales":
+            len(operacion.get("partidas", [])),
+
+        "archivos_totales":
+            len(evidencias_clasificadas),
+
+        "tipos_evidencia":
+            conteo_tipos,
+
+        "documentos":
+            len(documentos),
+
+        "evidencias_fisicas":
+            (
+                conteo_tipos["MERCANCIA"]
+                + conteo_tipos[
+                    "COMPLEMENTARIA"
+                ]
+            ),
+
+        "evidencias_asociadas":
+            asociadas,
+
+        "evidencias_ambiguas":
+            ambiguas,
+
+        "evidencias_sin_asociar":
+            sin_asociar,
+
+        "partidas_con_evidencia":
+            partidas_con_evidencia,
+
+        "excepciones_humanas":
+            len(
+                operacion.get(
+                    "excepciones_humanas",
+                    [],
+                )
+            ),
+
+        "estado":
+            estado,
     }
 
     return operacion
@@ -6184,13 +6409,49 @@ async def argo_ocr(
                             {
                                 "type": "input_text",
                                 "text": """
-Eres un sistema OCR experto en logística y documentos de embarque.
+Eres ARGO Vision Operación Masiva, un sistema especializado en
+logística, documentos de embarque e inspección física de mercancía.
 
-Tu tarea es extraer SOLAMENTE un JSON válido, sin texto adicional, sin explicación, sin markdown.
+Analiza EXCLUSIVAMENTE lo visible en esta imagen.
 
-Debes responder EXACTAMENTE con este esquema:
+Tu primera tarea es determinar qué tipo de evidencia contiene la foto.
+
+TIPOS PERMITIDOS:
+
+DOCUMENTO:
+Packing list, invoice, commercial invoice, shipping document,
+bill of lading, orden, hoja documental u otro documento que describe
+lo esperado o documentado en la operación.
+
+MERCANCIA:
+Etiqueta adherida al producto, etiqueta del fabricante, empaque del
+material, placa, grabado, caja del producto o el propio material donde
+se observan datos físicos que identifican la mercancía recibida.
+
+COMPLEMENTARIA:
+Fotografía física adicional del mismo material que aporta información
+parcial útil, aunque no muestre suficientes datos para identificar
+completamente la partida por sí sola.
+
+INCIERTA:
+La imagen no permite determinar con seguridad si corresponde a
+documentación o evidencia física útil.
+
+IMPORTANTE:
+- El nombre del archivo NO determina el tipo.
+- Clasifica por lo que realmente aparece en la imagen.
+- Una etiqueta física puede contener PO o número de línea y sigue
+  siendo evidencia física.
+- No inventes datos.
+- Si algo no es visible, usa null.
+
+Responde SOLAMENTE JSON válido con EXACTAMENTE esta estructura:
 
 {
+  "tipo_evidencia": "DOCUMENTO|MERCANCIA|COMPLEMENTARIA|INCIERTA",
+  "subtipo_evidencia": null,
+  "confianza_tipo": null,
+
   "cliente": null,
   "proveedor": null,
   "paqueteria": null,
@@ -6201,6 +6462,7 @@ Debes responder EXACTAMENTE con este esquema:
   "peso_unidad": null,
   "direccion_origen": null,
   "direccion_destino": null,
+
   "partidas_esperadas": [
     {
       "purchase_order": null,
@@ -6215,41 +6477,113 @@ Debes responder EXACTAMENTE con este esquema:
       "serie": null,
       "pais_origen": null
     }
-  ]
+  ],
+
+  "lectura_fisica": {
+    "marca": null,
+    "modelo": null,
+    "numero_parte": null,
+    "lote": null,
+    "serie": null,
+    "pais_origen": null,
+    "cantidad_visible": null,
+    "descripcion": null,
+    "purchase_order": null,
+    "partida": null,
+    "unidad": null,
+    "texto_adicional": [],
+    "confianza": {
+      "marca": null,
+      "modelo": null,
+      "numero_parte": null,
+      "lote": null,
+      "serie": null,
+      "pais_origen": null,
+      "cantidad_visible": null,
+      "descripcion": null,
+      "purchase_order": null,
+      "partida": null,
+      "unidad": null
+    },
+    "requiere_confirmacion": [],
+    "observaciones": []
+  }
 }
 
-Reglas obligatorias:
-- No inventes datos.
-- Si no se ve claramente, usa null.
-- cliente = consignee / ship to / deliver to / buyer / recipient si aplica.
-- proveedor = shipper / vendor / supplier / remitente si aplica.
-- paqueteria = UPS / FedEx / DHL / etc.
-- tracking = número principal de guía.
-- descripcion = descripción del producto o mercancía.
-- cantidad_bultos:
-  - si ves "2 OF 3" devuelve 3
-  - si ves "1 OF 1" devuelve 1
-  - si ves "PKGS 2" devuelve 2
-- peso_total:
-  - si ves "40 LBS" devuelve 40
-  - si ves "12 KG" devuelve 12
-- peso_unidad:
-  - si ves LB o LBS devuelve "LBS"
-  - si ves KG o KGS devuelve "KGS"
-- partidas_esperadas = partidas, líneas o renglones de mercancía esperada visibles en el documento.
-- Si el documento contiene varias partidas, devuelve un objeto separado por cada partida visible.
-- Si no existe ninguna partida identificable, devuelve [].
-- purchase_order = número de Purchase Order / PO asociado a la partida.
-- partida = número de línea / line / item.
-- numero_parte = part number / part no / número de parte.
-- cantidad = cantidad de mercancía de ESA PARTIDA; no confundir con cantidad_bultos.
-- unidad = unidad asociada a la cantidad, por ejemplo Each, EA, PCS, BOX.
-- descripcion dentro de cada partida = descripción específica de esa partida.
-- marca, modelo, lote, serie y pais_origen solo si aparecen explícitamente asociados a esa partida.
-- No deduzcas una partida usando únicamente datos generales del embarque.
-- No inventes PO, partida, número de parte, cantidad, unidad ni ningún otro dato.
-- Si un campo de una partida no es claramente visible, usa null.
-- Responde solo JSON válido.
+REGLAS DOCUMENTALES:
+
+- partidas_esperadas SOLO representa mercancía esperada según
+  documentos.
+- Si el documento contiene varias líneas o partidas, devuelve un
+  objeto separado por cada una.
+- purchase_order = Purchase Order / PO.
+- partida = Line / Line Item / Item Line.
+- numero_parte = Part Number / Part No / P/N / Item Number /
+  Material Number.
+- cantidad = cantidad correspondiente a ESA PARTIDA.
+- unidad = EA, Each, PCS, BOX u otra unidad visible.
+- descripcion = descripción específica de esa partida.
+- marca, modelo, lote, serie y pais_origen únicamente cuando estén
+  explícitamente asociados a esa partida.
+- Si la imagen NO es documento o no contiene partidas documentales,
+  devuelve partidas_esperadas = [].
+
+REGLAS DE EVIDENCIA FÍSICA:
+
+- lectura_fisica representa SOLAMENTE lo observado físicamente en
+  mercancía, etiqueta, empaque, placa o material.
+- marca = marca visible del material/fabricante.
+- modelo = modelo visible.
+- numero_parte = Part Number / P/N / Material Number u equivalente.
+- lote = Lot / Batch.
+- serie = Serial / S/N.
+- pais_origen únicamente si aparece Country of Origin, Made in,
+  Origin o equivalente.
+- cantidad_visible = cantidad de piezas/unidades indicada en la
+  evidencia física.
+- No confundas cantidad de piezas con cantidad de bultos.
+- descripcion conserva la descripción visible del producto.
+- purchase_order y partida pueden conservarse si aparecen en la
+  etiqueta física.
+- Si la imagen es DOCUMENTO y no contiene evidencia física real,
+  lectura_fisica debe permanecer con valores null.
+
+CONFIANZA:
+
+- confianza_tipo debe ser número de 0 a 1.
+- confianza de campos físicos debe ser número de 0 a 1 o null.
+- Si un campo crítico visible tiene confianza menor a 0.90, agrega
+  su nombre exacto a requiere_confirmacion.
+- Campos críticos:
+  numero_parte
+  modelo
+  lote
+  serie
+  pais_origen
+  cantidad_visible
+
+SUBTIPOS SUGERIDOS:
+
+Para DOCUMENTO:
+PACKING_LIST
+INVOICE
+COMMERCIAL_INVOICE
+SHIPPING_LABEL
+BILL_OF_LADING
+OTRO_DOCUMENTO
+
+Para MERCANCIA / COMPLEMENTARIA:
+ETIQUETA_PRODUCTO
+ETIQUETA_FABRICANTE
+PLACA
+EMPAQUE_PRODUCTO
+MATERIAL
+OTRA_EVIDENCIA_FISICA
+
+Para INCIERTA:
+INCIERTA
+
+Responde únicamente JSON válido.
 """
                             },
                             {
@@ -6282,7 +6616,27 @@ Reglas obligatorias:
                             "peso_unidad": None,
                             "direccion_origen": None,
                             "direccion_destino": None,
-                            "partidas_esperadas": []
+                            "partidas_esperadas": [],
+                            "tipo_evidencia": "INCIERTA",
+                            "subtipo_evidencia": "INCIERTA",
+                            "confianza_tipo": None,
+                            "lectura_fisica": {
+                                "marca": None,
+                                "modelo": None,
+                                "numero_parte": None,
+                                "lote": None,
+                                "serie": None,
+                                "pais_origen": None,
+                                "cantidad_visible": None,
+                                "descripcion": None,
+                                "purchase_order": None,
+                                "partida": None,
+                                "unidad": None,
+                                "texto_adicional": [],
+                                "confianza": {},
+                                "requiere_confirmacion": [],
+                                "observaciones": [],
+                            },
                         }
                 else:
                     ocr_json = {
@@ -6298,6 +6652,96 @@ Reglas obligatorias:
                         "direccion_destino": None,
                         "partidas_esperadas": []
                     }
+
+            # =============================================
+            # P004-PATCH-C - NORMALIZACION EVIDENCIA
+            # =============================================
+
+            tipo_evidencia = str(
+                ocr_json.get("tipo_evidencia")
+                or "INCIERTA"
+            ).strip().upper()
+
+            tipos_validos = {
+                "DOCUMENTO",
+                "MERCANCIA",
+                "COMPLEMENTARIA",
+                "INCIERTA",
+            }
+
+            if tipo_evidencia not in tipos_validos:
+                tipo_evidencia = "INCIERTA"
+
+            ocr_json["tipo_evidencia"] = tipo_evidencia
+            ocr_json.setdefault(
+                "subtipo_evidencia",
+                None,
+            )
+            ocr_json.setdefault(
+                "confianza_tipo",
+                None,
+            )
+
+            if not isinstance(
+                ocr_json.get("partidas_esperadas"),
+                list,
+            ):
+                ocr_json["partidas_esperadas"] = []
+
+            lectura_fisica = (
+                ocr_json.get("lectura_fisica")
+                if isinstance(
+                    ocr_json.get("lectura_fisica"),
+                    dict,
+                )
+                else {}
+            )
+
+            campos_fisicos = [
+                "marca",
+                "modelo",
+                "numero_parte",
+                "lote",
+                "serie",
+                "pais_origen",
+                "cantidad_visible",
+                "descripcion",
+                "purchase_order",
+                "partida",
+                "unidad",
+            ]
+
+            for campo in campos_fisicos:
+                lectura_fisica.setdefault(
+                    campo,
+                    None,
+                )
+
+            if not isinstance(
+                lectura_fisica.get("confianza"),
+                dict,
+            ):
+                lectura_fisica["confianza"] = {}
+
+            if not isinstance(
+                lectura_fisica.get("texto_adicional"),
+                list,
+            ):
+                lectura_fisica["texto_adicional"] = []
+
+            if not isinstance(
+                lectura_fisica.get("requiere_confirmacion"),
+                list,
+            ):
+                lectura_fisica["requiere_confirmacion"] = []
+
+            if not isinstance(
+                lectura_fisica.get("observaciones"),
+                list,
+            ):
+                lectura_fisica["observaciones"] = []
+
+            ocr_json["lectura_fisica"] = lectura_fisica
 
             resultados.append({
                 "archivo": getattr(file, "filename", "archivo.jpg"),
