@@ -7010,6 +7010,82 @@ Responde únicamente JSON válido.
             partidas_esperadas=partidas_esperadas,
             resultados=resultados,
         )
+
+        # =================================================
+        # P004-PATCH-D
+        # CIERRE AUTOMATICO DE OPERACION MULTIPARTE
+        # =================================================
+
+        try:
+            tracking_p004 = (
+                consolidado.get("tracking")
+                or operacion_multiparte.get("tracking")
+            )
+
+            if operacion_multiparte.get("partidas"):
+                resumen_final_p004 = finalizar_partidas_operacion(
+                    operacion_multiparte,
+                    id_shipment=tracking_p004,
+                )
+            else:
+                resumen_final_p004 = {
+                    "ok": True,
+                    "estado_operacion":
+                        operacion_multiparte.get("estado"),
+                    "partidas_totales": 0,
+                    "coinciden": 0,
+                    "diferencias": 0,
+                    "dudas": 0,
+                    "requieren_revision": 0,
+                    "requieren_validacion_tecnica": 0,
+                    "partidas_sin_evidencia": 0,
+                    "excepciones_humanas": len(
+                        operacion_multiparte.get(
+                            "excepciones_humanas",
+                            [],
+                        )
+                    ),
+                    "partidas": [],
+                    "reporte_multiparte": {
+                        "modulo":
+                            "ARGO_P004_REPORTE_MULTIPARTE",
+                        "version": "0.1-pilot",
+                        "id_operacion":
+                            operacion_multiparte.get(
+                                "id_operacion"
+                            ),
+                        "estado_operacion":
+                            operacion_multiparte.get("estado"),
+                        "total_partidas": 0,
+                        "partidas": [],
+                        "excepciones_humanas":
+                            operacion_multiparte.get(
+                                "excepciones_humanas",
+                                [],
+                            ),
+                    },
+                }
+
+            operacion_multiparte["resumen_final"] = (
+                resumen_final_p004
+            )
+
+        except Exception as cierre_p004_err:
+            print(
+                "WARNING P004 CIERRE AUTOMATICO:",
+                str(cierre_p004_err),
+            )
+
+            resumen_final_p004 = {
+                "ok": False,
+                "estado_operacion":
+                    "ERROR_CIERRE_MULTIPARTE",
+                "error": str(cierre_p004_err),
+            }
+
+            operacion_multiparte["resumen_final"] = (
+                resumen_final_p004
+            )
     except Exception as p004_err:
         print(
             "WARNING P004 OCR MULTIPARTE:",
@@ -7049,6 +7125,11 @@ Responde únicamente JSON válido.
         "consolidado": consolidado,
         "partidas_esperadas": partidas_esperadas,
         "operacion_multiparte": operacion_multiparte,
+        "resumen_multiparte": (
+            operacion_multiparte.get("resumen_final")
+            if isinstance(operacion_multiparte, dict)
+            else None
+        ),
         "resultados": resultados
     }
 
