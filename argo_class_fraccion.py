@@ -331,7 +331,12 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
         "tornillo", "screw", "bolt", "spring", "plunger", "steel", "metal",
         "plastic", "nylon", "pcb", "sensor", "module", "automotive", "vehicle",
         "wiring harness", "gasket", "seal", "o-ring", "gauge", "meter",
-        "pump", "valve", "motor", "chemical", "sds", "msds"
+        "pump", "valve", "motor", "chemical", "sds", "msds",
+        "bearing", "rodamiento", "needle roller bearing",
+        "contactor", "contactora",
+        "breaker", "circuit breaker",
+        "relay", "relevador",
+        "actuator", "gearbox", "transformer", "plc", "hmi"
     ]
 
     for palabra in palabras_clave:
@@ -360,6 +365,54 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
         f"Esta sugerencia debe validarse con documentación técnica y criterio del clasificador."
     )
 
+    producto_detectado = None
+    familia_detectada = None
+
+    if any(k in desc for k in ["needle roller bearing", "bearing", "rodamiento"]):
+        producto_detectado = "Rodamiento"
+        familia_detectada = "Rodamientos / componentes mecánicos"
+    elif any(k in desc for k in ["contactor", "contactora"]):
+        producto_detectado = "Contactor"
+        familia_detectada = "Aparatos de maniobra eléctrica"
+    elif any(k in desc for k in ["circuit breaker", "breaker"]):
+        producto_detectado = "Interruptor automático"
+        familia_detectada = "Protección eléctrica"
+    elif any(k in desc for k in ["relay", "relevador"]):
+        producto_detectado = "Relevador"
+        familia_detectada = "Aparatos de maniobra eléctrica"
+    elif "sensor" in desc:
+        producto_detectado = "Sensor"
+        familia_detectada = "Instrumentación / control"
+    elif any(k in desc for k in ["valve", "valvula", "válvula"]):
+        producto_detectado = "Válvula"
+        familia_detectada = "Componentes de maquinaria"
+    elif any(k in desc for k in ["motor"]):
+        producto_detectado = "Motor"
+        familia_detectada = "Maquinaria / accionamiento"
+
+    informacion_faltante = []
+
+    if confianza < 70:
+        informacion_faltante.append(
+            "Validar función principal, especificaciones técnicas y uso declarado."
+        )
+
+    if producto_detectado is None:
+        informacion_faltante.append(
+            "No se identificó con suficiente claridad una familia específica de producto."
+        )
+
+    requiere_validacion_tecnica = (
+        confianza < 70
+        or producto_detectado is None
+    )
+
+    estado_clasificacion = (
+        "PRELIMINAR_CON_SUSTENTO"
+        if not requiere_validacion_tecnica
+        else "REQUIERE_VALIDACION_TECNICA"
+    )
+
     return {
         "fraccion_sugerida": top[0],
         "descripcion_fraccion": descripcion_fraccion,
@@ -376,4 +429,9 @@ def sugerir_fraccion(descripcion: str, sector: str = "OTRO") -> Dict[str, Any]:
         "factores_positivos": factores_positivos,
         "factores_negativos": factores_negativos,
         "explicacion_clasificacion": explicacion_clasificacion,
+        "estado_clasificacion": estado_clasificacion,
+        "requiere_validacion_tecnica": requiere_validacion_tecnica,
+        "producto_detectado": producto_detectado,
+        "familia_detectada": familia_detectada,
+        "informacion_faltante": informacion_faltante,
     }

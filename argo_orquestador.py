@@ -758,3 +758,495 @@ def procesar_evidencias_masivas(
         "estado_operacion": operacion.get("estado"),
         "resultados": resultados,
     }
+
+
+# === P004: ARGO CLASS POR PARTIDA ===
+
+def construir_descripcion_class(partida: Dict[str, Any]) -> str:
+    """
+    Construye una descripción enriquecida usando SOLO el dato operativo
+    de la partida.
+
+    No mezcla datos de otras partidas.
+    """
+
+    if not isinstance(partida, dict):
+        raise ValueError("partida debe ser un diccionario")
+
+    datos = partida.get("dato_operativo", {}) or {}
+
+    etiquetas = [
+        ("marca", "Marca"),
+        ("modelo", "Modelo"),
+        ("numero_parte", "Número de parte"),
+        ("descripcion", "Descripción"),
+        ("cantidad", "Cantidad"),
+        ("unidad", "Unidad"),
+        ("lote", "Lote"),
+        ("serie", "Serie"),
+        ("pais_origen", "País de origen"),
+    ]
+
+    partes = []
+
+    for campo, etiqueta in etiquetas:
+        valor = datos.get(campo)
+
+        if not _valor_presente(valor):
+            continue
+
+        partes.append(f"{etiqueta}: {valor}")
+
+    return ". ".join(partes)
+
+
+def clasificar_partida(
+    partida: Dict[str, Any],
+    *,
+    id_operacion: Optional[str] = None,
+    id_shipment: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Ejecuta ARGO CLASS exclusivamente para una partida.
+
+    Cada partida recibe su propio id_item y su propia descripción
+    enriquecida basada en la realidad física.
+    """
+
+    if not isinstance(partida, dict):
+        raise ValueError("partida debe ser un diccionario")
+
+    from argo_class_engine import build_output
+
+    descripcion = construir_descripcion_class(partida)
+
+    payload_master = {
+        "meta": {
+            "id_operacion": id_operacion,
+            "id_shipment": id_shipment,
+            "id_item": partida.get("indice"),
+        },
+        "descripcion": descripcion,
+        "documentos": [],
+        "control": {
+            "resumen": {},
+        },
+        "datos_operativos": partida.get("dato_operativo", {}) or {},
+    }
+
+    salida = build_output(payload_master) or {}
+
+    partida["clasificacion_argo_class"] = salida
+    partida["descripcion_class"] = descripcion
+
+    return salida
+
+
+# === P004: FINALIZACION MULTIPARTE ===
+
+def _partida_tiene_dato_fisico(partida: Dict[str, Any]) -> bool:
+    """
+    Indica si existe al menos un dato realmente observado
+    en evidencia física de la partida.
+    """
+    if not isinstance(partida, dict):
+        return False
+
+    fisico = partida.get("dato_fisico", {}) or {}
+
+    return any(
+        _valor_presente(fisico.get(campo))
+        for campo in CAMPOS_PARTIDA
+    )
+
+
+def _agregar_excepcion_unica(
+    contenedor: Dict[str, Any],
+    excepcion: Dict[str, Any],
+) -> None:
+    """
+    Agrega una excepción evitando duplicados por codigo + campo.
+    """
+    excepciones = contenedor.setdefault("excepciones", [])
+
+    codigo = excepcion.get("codigo")
+    campo = excepcion.get("campo")
+
+    for actual in excepciones:
+        if not isinstance(actual, dict):
+            continue
+
+        if (
+            actual.get("codigo") == codigo
+            and actual.get("campo") == campo
+        ):
+            return
+
+    excepciones.append(excepcion)
+
+
+def _resumen_class_partida(
+    class_result: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Extrae un resumen estable de ARGO CLASS para reportes P004.
+    """
+    if not isinstance(class_result, dict):
+        return {
+            "ejecutado": False,
+            "producto_detectado": None,
+            "familia_detectada": None,
+            "sector_detectado": None,
+            "confianza_sector_pct": None,
+            "fraccion_sugerida": None,
+            "confianza_fraccion_pct": None,
+            "estado_clasificacion": "PENDIENTE_EVIDENCIA",
+            "requiere_validacion_tecnica": True,
+            "informacion_faltante": [
+                "No existe evidencia física suficiente para clasificar."
+            ],
+        }
+
+    salida = class_result.get("salida", {}) or {}
+
+    sector = salida.get("sector_ia", {}) or {}
+    clas = salida.get("clasificacion", {}) or {}
+
+    return {
+        "ejecutado": True,
+        "producto_detectado":
+            clas.get("producto_detectado"),
+        "familia_detectada":
+            clas.get("familia_detectada"),
+        "sector_detectado":
+            sector.get("sector_detectado"),
+        "confianza_sector_pct":
+            sector.get("confianza_sector_pct"),
+        "fraccion_sugerida":
+            clas.get("fraccion_sugerida"),
+        "confianza_fraccion_pct":
+            clas.get("confianza_fraccion_pct"),
+        "estado_clasificacion":
+            clas.get("estado_clasificacion"),
+        "requiere_validacion_tecnica":
+            clas.get("requiere_validacion_tecnica"),
+        "informacion_faltante":
+            clas.get("informacion_faltante", []),
+        "evidencia_detectada":
+            clas.get("evidencia_detectada", []),
+        "reglas_activadas":
+            clas.get("reglas_activadas", []),
+    }
+
+
+def construir_reporte_multiparte(
+    operacion: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Construye una representación estructurada del reporte P004.
+
+    Regla:
+    - referencia_documental = lo esperado;
+    - dato_fisico = lo observado;
+    - dato_operativo = realidad física que alimenta el cruce;
+    - comparación conserva diferencias sin sobrescribir lo físico;
+    - CLASS se conserva individualmente por partida.
+    """
+    if not isinstance(operacion, dict):
+        raise ValueError("operacion debe ser un diccionario")
+
+    partidas_reporte = []
+
+    for partida in operacion.get("partidas", []) or []:
+        if not isinstance(partida, dict):
+            continue
+
+        comparacion = partida.get("comparacion", {}) or {}
+
+        class_resumen = _resumen_class_partida(
+            partida.get("clasificacion_argo_class")
+        )
+
+        partidas_reporte.append({
+            "indice": partida.get("indice"),
+            "estado": partida.get("estado"),
+
+            "referencia_documental":
+                dict(partida.get("referencia_documental", {}) or {}),
+
+            "dato_fisico":
+                dict(partida.get("dato_fisico", {}) or {}),
+
+            "dato_operativo":
+                dict(partida.get("dato_operativo", {}) or {}),
+
+            "proveniencia":
+                dict(partida.get("proveniencia", {}) or {}),
+
+            "evidencias":
+                list(partida.get("evidencias", []) or []),
+
+            "comparacion": {
+                "resultado_general":
+                    comparacion.get("resultado_general"),
+                "resumen":
+                    comparacion.get("resumen", {}),
+                "comparaciones":
+                    comparacion.get("comparaciones", []),
+            },
+
+            "argo_class": class_resumen,
+
+            "excepciones":
+                list(partida.get("excepciones", []) or []),
+        })
+
+    return {
+        "modulo": "ARGO_P004_REPORTE_MULTIPARTE",
+        "version": "0.1-pilot",
+        "id_operacion": operacion.get("id_operacion"),
+        "estado_operacion": operacion.get("estado"),
+        "total_partidas": len(partidas_reporte),
+        "partidas": partidas_reporte,
+        "excepciones_humanas":
+            list(operacion.get("excepciones_humanas", []) or []),
+    }
+
+
+def finalizar_partidas_operacion(
+    operacion: Dict[str, Any],
+    *,
+    id_shipment: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Finaliza todas las partidas de una operación P004.
+
+    Para cada partida:
+    1. consolida evidencia física;
+    2. compara documento vs realidad física;
+    3. ejecuta ARGO CLASS exclusivamente con esa partida;
+    4. conserva datos y resultados independientemente;
+    5. genera resumen general de la operación.
+
+    CLASS no se ejecuta si no existe evidencia física suficiente.
+    """
+
+    if not isinstance(operacion, dict):
+        raise ValueError("operacion debe ser un diccionario")
+
+    id_operacion = operacion.get("id_operacion")
+
+    resultados = []
+
+    for partida in operacion.get("partidas", []) or []:
+        if not isinstance(partida, dict):
+            continue
+
+        # -----------------------------------------
+        # 1) Consolidar realidad física
+        # -----------------------------------------
+        resolver_dato_operativo(partida)
+
+        tiene_fisico = _partida_tiene_dato_fisico(partida)
+
+        if not tiene_fisico:
+            _agregar_excepcion_unica(
+                partida,
+                {
+                    "codigo": "PARTIDA_SIN_EVIDENCIA_FISICA",
+                    "campo": None,
+                    "mensaje": (
+                        "La partida documental no tiene evidencia "
+                        "física suficiente asociada."
+                    ),
+                    "requiere_revision_humana": True,
+                },
+            )
+
+        # -----------------------------------------
+        # 2) Comparación documental
+        # -----------------------------------------
+        comparacion = comparar_partida(partida)
+
+        # -----------------------------------------
+        # 3) CLASS exclusivamente por partida
+        # -----------------------------------------
+        class_result = None
+
+        if tiene_fisico:
+            class_result = clasificar_partida(
+                partida,
+                id_operacion=id_operacion,
+                id_shipment=id_shipment,
+            )
+        else:
+            partida["clasificacion_argo_class"] = None
+            partida["descripcion_class"] = ""
+
+        class_resumen = _resumen_class_partida(
+            class_result
+        )
+
+        resultado_comparacion = (
+            comparacion.get("resultado_general")
+        )
+
+        # -----------------------------------------
+        # 4) Estado operativo de la partida
+        # -----------------------------------------
+        hay_excepcion_humana = any(
+            isinstance(e, dict)
+            and e.get("requiere_revision_humana") is True
+            for e in partida.get("excepciones", []) or []
+        )
+
+        if resultado_comparacion == "DIFERENCIA":
+            estado_partida = "DIFERENCIA_DOCUMENTAL"
+
+        elif (
+            resultado_comparacion == "DUDA"
+            or hay_excepcion_humana
+        ):
+            estado_partida = "REQUIERE_REVISION"
+
+        else:
+            estado_partida = "VERIFICADA"
+
+        partida["estado"] = estado_partida
+
+        resultados.append({
+            "indice": partida.get("indice"),
+            "estado": estado_partida,
+
+            "resultado_comparacion":
+                resultado_comparacion,
+
+            "producto_detectado":
+                class_resumen.get("producto_detectado"),
+
+            "familia_detectada":
+                class_resumen.get("familia_detectada"),
+
+            "sector_detectado":
+                class_resumen.get("sector_detectado"),
+
+            "fraccion_sugerida":
+                class_resumen.get("fraccion_sugerida"),
+
+            "confianza_fraccion_pct":
+                class_resumen.get("confianza_fraccion_pct"),
+
+            "estado_clasificacion":
+                class_resumen.get("estado_clasificacion"),
+
+            "requiere_validacion_tecnica":
+                class_resumen.get(
+                    "requiere_validacion_tecnica"
+                ),
+
+            "evidencias":
+                len(partida.get("evidencias", []) or []),
+        })
+
+    # ---------------------------------------------
+    # 5) Resumen de la operación
+    # ---------------------------------------------
+    coinciden = sum(
+        1 for r in resultados
+        if r.get("resultado_comparacion") == "COINCIDE"
+    )
+
+    diferencias = sum(
+        1 for r in resultados
+        if r.get("resultado_comparacion") == "DIFERENCIA"
+    )
+
+    dudas = sum(
+        1 for r in resultados
+        if r.get("resultado_comparacion") == "DUDA"
+    )
+
+    verificadas = sum(
+        1 for r in resultados
+        if r.get("estado") == "VERIFICADA"
+    )
+
+    requieren_revision = sum(
+        1 for r in resultados
+        if r.get("estado") == "REQUIERE_REVISION"
+    )
+
+    requieren_validacion_tecnica = sum(
+        1 for r in resultados
+        if r.get("requiere_validacion_tecnica") is True
+    )
+
+    partidas_sin_evidencia = sum(
+        1 for r in resultados
+        if int(r.get("evidencias") or 0) == 0
+    )
+
+    excepciones_operacion = len(
+        operacion.get("excepciones_humanas", []) or []
+    )
+
+    # La validación técnica de CLASS se reporta aparte.
+    # No convierte por sí sola una recepción correcta en diferencia.
+    if diferencias > 0:
+        estado_operacion = "DIFERENCIAS_DETECTADAS"
+
+    elif (
+        dudas > 0
+        or requieren_revision > 0
+        or excepciones_operacion > 0
+        or partidas_sin_evidencia > 0
+    ):
+        estado_operacion = "REQUIERE_REVISION"
+
+    else:
+        estado_operacion = "VERIFICADA"
+
+    operacion["estado"] = estado_operacion
+    operacion["resumen_partidas"] = resultados
+
+    reporte = construir_reporte_multiparte(
+        operacion
+    )
+
+    operacion["reporte_multiparte"] = reporte
+
+    resumen = {
+        "ok": True,
+        "id_operacion": id_operacion,
+
+        "partidas_totales": len(resultados),
+        "partidas_verificadas": verificadas,
+
+        "coinciden": coinciden,
+        "diferencias": diferencias,
+        "dudas": dudas,
+
+        "requieren_revision": requieren_revision,
+
+        "requieren_validacion_tecnica":
+            requieren_validacion_tecnica,
+
+        "partidas_sin_evidencia":
+            partidas_sin_evidencia,
+
+        "excepciones_humanas":
+            excepciones_operacion,
+
+        "estado_operacion":
+            estado_operacion,
+
+        "partidas":
+            resultados,
+
+        "reporte_multiparte":
+            reporte,
+    }
+
+    operacion["resumen_final"] = resumen
+
+    return resumen

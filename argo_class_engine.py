@@ -25,9 +25,26 @@ def clamp(n: int, lo: int, hi: int) -> int:
 # =========================
 SECTOR_KEYWORDS = {
     "QUIMICO": ["msds", "sds", "solvente", "acido", "ácido", "resina", "cas", "corrosive", "flammable", "peligroso"],
-    "ELECTRONICO": ["volt", "watt", "usb", "sensor", "pcb", "chip", "bluetooth", "adapter", "cargador", "transformer"],
+    "ELECTRONICO": [
+        "volt", "watt", "usb", "sensor", "pcb", "chip", "bluetooth",
+        "adapter", "cargador", "transformer",
+        "contactor", "contactora",
+        "relay", "relevador",
+        "breaker", "circuit breaker", "interruptor",
+        "plc", "hmi", "power supply",
+        "control board", "electrical", "electric",
+    ],
     "TEXTIL": ["fibra", "algodon", "algodón", "poliester", "poliéster", "tejido", "punto", "denier", "tela", "gramaje"],
-    "MAQUINARIA": ["motor", "bomba", "rpm", "valvula", "válvula", "compressor", "compresor", "torque", "hp"],
+    "MAQUINARIA": [
+        "motor", "bomba", "pump",
+        "rpm", "valvula", "válvula", "valve",
+        "compressor", "compresor",
+        "torque", "hp",
+        "bearing", "rodamiento",
+        "roller bearing", "needle bearing",
+        "needle roller bearing",
+        "actuator", "gearbox", "gear",
+    ],
     "ALIMENTARIO": ["ingredientes", "food", "edible", "congelado", "frozen", "beverage", "consumo humano", "animal feed"],
     "PLASTICOS": ["plastic", "polymer", "polyethylene", "polypropylene", "pvc", "abs", "pellet", "granule", "resin"],
     "METALMECANICO": ["steel", "aluminum", "aluminium", "alloy", "aleacion", "aleación", "stainless", "copper", "brass", "forged"],
@@ -442,6 +459,11 @@ def build_output(payload_master: Dict[str, Any]) -> Dict[str, Any]:
         "factores_positivos": resultado_fraccion.get("factores_positivos", []),
         "factores_negativos": resultado_fraccion.get("factores_negativos", []),
         "explicacion_clasificacion": resultado_fraccion.get("explicacion_clasificacion", ""),
+        "estado_clasificacion": resultado_fraccion.get("estado_clasificacion"),
+        "requiere_validacion_tecnica": resultado_fraccion.get("requiere_validacion_tecnica"),
+        "producto_detectado": resultado_fraccion.get("producto_detectado"),
+        "familia_detectada": resultado_fraccion.get("familia_detectada"),
+        "informacion_faltante": resultado_fraccion.get("informacion_faltante", []),
         "dictamen_tecnico": dictamen_tecnico,
     }
     conf_sector = int(sector_info["confianza_sector_pct"])
