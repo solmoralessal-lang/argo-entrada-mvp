@@ -72,3 +72,9 @@ certs/
 *.p12
 *.pfx
 *.bak_*
+
+# Frontend source reconstruction - artefactos locales
+frontend/dist/
+frontend/*.pre_*
+dist.pre_auth_fix/
+dist.pre_camera_v2/
