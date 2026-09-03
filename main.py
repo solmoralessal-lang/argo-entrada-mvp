@@ -7,6 +7,14 @@ import os
 import base64
 from openai import OpenAI
 
+# P004 - Orquestacion multiparte
+from argo_orquestador import (
+    nueva_operacion,
+    agregar_partida,
+    establecer_referencia_documental,
+)
+
+
 def convertir_a_base64(contenido: bytes) -> str:
     """Convierte contenido binario a una cadena Base64 UTF-8."""
     if not isinstance(contenido, (bytes, bytearray)):
@@ -5852,6 +5860,148 @@ def validar_imagen_ocr_argo(
     }
 
 
+
+
+# === P004-PATCH-B: OCR -> OPERACION MULTIPARTE ===
+
+def construir_operacion_multiparte_desde_ocr(
+    *,
+    consolidado: dict,
+    partidas_esperadas: list,
+    resultados: list,
+) -> dict:
+    """
+    Construye el expediente multiparte P004 a partir del resultado
+    del OCR masivo.
+
+    Reglas:
+    - Cada partida documental se mantiene independiente.
+    - No mezcla datos entre partidas.
+    - Conserva archivo fuente.
+    - Conserva todas las evidencias OCR de la operacion.
+    - Todavia NO interpreta automaticamente una imagen como
+      evidencia fisica definitiva.
+    - La asociacion fisica se realizara posteriormente por P004.
+    """
+
+    consolidado = consolidado or {}
+    partidas_esperadas = partidas_esperadas or []
+    resultados = resultados or []
+
+    id_base = (
+        consolidado.get("tracking")
+        or consolidado.get("shipment_id")
+        or "OCR-SIN-TRACKING"
+    )
+
+    operacion = nueva_operacion(
+        f"P004-{id_base}"
+    )
+
+    operacion["origen"] = "ARGO_OCR"
+    operacion["tracking"] = consolidado.get("tracking")
+
+    operacion["datos_generales"] = {
+        "cliente": consolidado.get("cliente"),
+        "proveedor": consolidado.get("proveedor"),
+        "paqueteria": consolidado.get("paqueteria"),
+        "tracking": consolidado.get("tracking"),
+        "descripcion": consolidado.get("descripcion"),
+        "cantidad_bultos": consolidado.get("cantidad_bultos"),
+        "peso_total": consolidado.get("peso_total"),
+        "peso_unidad": consolidado.get("peso_unidad"),
+        "direccion_origen": consolidado.get("direccion_origen"),
+        "direccion_destino": consolidado.get("direccion_destino"),
+    }
+
+    # --------------------------------------------------------
+    # PARTIDAS DOCUMENTALES
+    # --------------------------------------------------------
+
+    for datos_partida in partidas_esperadas:
+
+        if not isinstance(datos_partida, dict):
+            continue
+
+        partida = agregar_partida(operacion)
+
+        referencia = {
+            "purchase_order": datos_partida.get("purchase_order"),
+            "partida": datos_partida.get("partida"),
+            "numero_parte": datos_partida.get("numero_parte"),
+            "descripcion": datos_partida.get("descripcion"),
+            "cantidad": datos_partida.get("cantidad"),
+            "unidad": datos_partida.get("unidad"),
+            "marca": datos_partida.get("marca"),
+            "modelo": datos_partida.get("modelo"),
+            "lote": datos_partida.get("lote"),
+            "serie": datos_partida.get("serie"),
+            "pais_origen": datos_partida.get("pais_origen"),
+        }
+
+        establecer_referencia_documental(
+            partida,
+            referencia,
+        )
+
+        partida["archivo_fuente_documental"] = (
+            datos_partida.get("archivo_fuente")
+        )
+
+        partida["origen_referencia"] = "OCR_DOCUMENTAL"
+
+    # --------------------------------------------------------
+    # INVENTARIO DE EVIDENCIAS OCR
+    # --------------------------------------------------------
+
+    evidencias_ocr = []
+
+    for indice, item in enumerate(resultados, start=1):
+
+        if not isinstance(item, dict):
+            continue
+
+        data = item.get("ocr_json") or {}
+
+        evidencia = {
+            "evidencia_id": f"OCR-{indice:03d}",
+            "archivo": item.get("archivo"),
+            "ocr_json": data,
+            "tipo_evidencia": "OCR_SIN_RESOLVER",
+            "estado_asociacion": "PENDIENTE",
+            "requiere_clasificacion": True,
+        }
+
+        evidencias_ocr.append(evidencia)
+
+    operacion["evidencias_ocr"] = evidencias_ocr
+
+    # --------------------------------------------------------
+    # ESTADO INICIAL
+    # --------------------------------------------------------
+
+    total_partidas = len(operacion.get("partidas", []) or [])
+    total_evidencias = len(evidencias_ocr)
+
+    if total_partidas:
+        estado = "REFERENCIA_DOCUMENTAL_CREADA"
+    elif total_evidencias:
+        estado = "SIN_PARTIDAS_DOCUMENTALES"
+    else:
+        estado = "SIN_EVIDENCIA"
+
+    operacion["estado"] = estado
+
+    operacion["resumen_ocr_multiparte"] = {
+        "partidas_documentales": total_partidas,
+        "evidencias_ocr": total_evidencias,
+        "evidencias_pendientes_clasificacion": total_evidencias,
+        "estado": estado,
+    }
+
+    return operacion
+
+
 @app.post("/argo/ocr")
 async def argo_ocr(
     request: Request,
@@ -6405,6 +6555,31 @@ Reglas obligatorias:
         accion = "CONTINUAR"
         razon = "Solo faltantes menores"
 
+    # =====================================================
+    # P004-PATCH-B
+    # CONSTRUIR EXPEDIENTE MULTIPARTE DESDE OCR
+    # =====================================================
+
+    try:
+        operacion_multiparte = construir_operacion_multiparte_desde_ocr(
+            consolidado=consolidado,
+            partidas_esperadas=partidas_esperadas,
+            resultados=resultados,
+        )
+    except Exception as p004_err:
+        print(
+            "WARNING P004 OCR MULTIPARTE:",
+            str(p004_err),
+        )
+
+        operacion_multiparte = {
+            "ok": False,
+            "estado": "ERROR_ORQUESTACION",
+            "error": str(p004_err),
+            "partidas": [],
+            "evidencias_ocr": [],
+        }
+
     return {
         "ok": True,
         "modulo": "ARGO_OCR",
@@ -6429,6 +6604,7 @@ Reglas obligatorias:
         "errores": errores,
         "consolidado": consolidado,
         "partidas_esperadas": partidas_esperadas,
+        "operacion_multiparte": operacion_multiparte,
         "resultados": resultados
     }
 
