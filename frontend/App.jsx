@@ -172,6 +172,12 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
   const [lecturaMercancia, setLecturaMercancia] = useState(null);
   const [editandoMercancia, setEditandoMercancia] = useState(false);
   const [lecturaConfirmada, setLecturaConfirmada] = useState(false);
+
+  // P003 - referencia documental esperada vs mercancía observada
+  const [partidasEsperadas, setPartidasEsperadas] = useState([]);
+  const [partidaEsperadaSeleccionada, setPartidaEsperadaSeleccionada] = useState(null);
+  const [comparacionMercancia, setComparacionMercancia] = useState(null);
+
   const [reporteEjecutivo, setReporteEjecutivo] = useState(null);
   const [resultadoCarga, setResultadoCarga] = useState({
     archivosRecibidos: 0,
@@ -1356,6 +1362,7 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
     setLecturaMercancia(null);
     setLecturaConfirmada(false);
     setEditandoMercancia(false);
+    setComparacionMercancia(null);
     setScanStatus("Analizando etiqueta de mercancía...");
 
     const formData = new FormData();
@@ -1390,6 +1397,15 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
       setLecturaConfirmada(false);
       setEditandoMercancia(false);
 
+      if (partidaEsperadaSeleccionada) {
+        await compararMercancia(
+          partidaEsperadaSeleccionada,
+          lectura
+        );
+      } else {
+        setComparacionMercancia(null);
+      }
+
       if (data.requiere_revision_humana) {
         setScanStatus(
           "Lectura terminada. Revisa los campos marcados antes de confirmar."
@@ -1406,6 +1422,46 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
       setScanStatus("Error de conexión con Cámara PRO v2.");
     } finally {
       setProcesando(false);
+    }
+  }
+
+  async function compararMercancia(esperado, observado) {
+    if (!esperado || !observado) {
+      setComparacionMercancia(null);
+      return null;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/argo/comparar_mercancia`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${sessionToken}`,
+          "Content-Type": "application/json",
+          "x-cliente-id": usuario?.id_cliente || "",
+          "x-usuario-email": usuario?.email || "",
+          "x-usuario-rol": usuario?.rol || "operador",
+        },
+        body: JSON.stringify({
+          esperado,
+          observado,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.ok) {
+        console.error("ERROR COMPARADOR MERCANCIA", data);
+        setComparacionMercancia(null);
+        return null;
+      }
+
+      setComparacionMercancia(data);
+      return data;
+
+    } catch (err) {
+      console.error("Error comparando mercancía", err);
+      setComparacionMercancia(null);
+      return null;
     }
   }
 
@@ -1453,6 +1509,10 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
       );
       return;
     }
+
+    setPartidasEsperadas([]);
+    setPartidaEsperadaSeleccionada(null);
+    setComparacionMercancia(null);
 
     setProcesando(true);
     setReporteEjecutivo(null);
@@ -1528,6 +1588,19 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
         `OCR terminado: ${data.procesados || 0} de ` +
         `${data.total_archivos || lista.length} procesados`
       );
+
+      const nuevasPartidas = Array.isArray(data.partidas_esperadas)
+        ? data.partidas_esperadas
+        : [];
+
+      setPartidasEsperadas(nuevasPartidas);
+      setComparacionMercancia(null);
+
+      if (nuevasPartidas.length === 1) {
+        setPartidaEsperadaSeleccionada(nuevasPartidas[0]);
+      } else {
+        setPartidaEsperadaSeleccionada(null);
+      }
 
       data.cliente_id = usuario?.id_cliente;
       data.cliente_nombre = usuario?.nombre;
@@ -3161,19 +3234,275 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
               </h3>
 
               <div
+                style={{
+                  marginBottom: "14px",
+                  padding: "14px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                }}
+              >
+                <strong>Referencia documental</strong>
+
+                {partidasEsperadas.length === 0 && (
+                  <div
+                    className="scanner-status"
+                    style={{
+                      marginTop: "10px",
+                      background: "#f1f5f9",
+                      color: "#475569",
+                    }}
+                  >
+                    ⚪ SIN REFERENCIA DOCUMENTAL
+                  </div>
+                )}
+
+                {partidasEsperadas.length > 1 && (
+                  <div style={{ marginTop: "10px" }}>
+                    <label>
+                      Selecciona la partida que corresponde a esta mercancía:
+                    </label>
+
+                    <select
+                      value={
+                        partidaEsperadaSeleccionada
+                          ? partidasEsperadas.indexOf(
+                              partidaEsperadaSeleccionada
+                            )
+                          : ""
+                      }
+                      onChange={async (e) => {
+                        const indice = Number(e.target.value);
+                        const seleccion =
+                          Number.isInteger(indice) &&
+                          partidasEsperadas[indice]
+                            ? partidasEsperadas[indice]
+                            : null;
+
+                        setPartidaEsperadaSeleccionada(seleccion);
+                        setComparacionMercancia(null);
+
+                        if (seleccion && lecturaMercancia) {
+                          await compararMercancia(
+                            seleccion,
+                            lecturaMercancia
+                          );
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        marginTop: "8px",
+                        padding: "9px",
+                        borderRadius: "8px",
+                        border: "1px solid #94a3b8",
+                      }}
+                    >
+                      <option value="">
+                        -- Seleccionar partida --
+                      </option>
+
+                      {partidasEsperadas.map((p, index) => (
+                        <option key={index} value={index}>
+                          {[
+                            p.purchase_order
+                              ? `PO ${p.purchase_order}`
+                              : null,
+                            p.partida
+                              ? `Línea ${p.partida}`
+                              : null,
+                            p.numero_parte
+                              ? `Parte ${p.numero_parte}`
+                              : null,
+                            p.cantidad != null
+                              ? `Cant. ${p.cantidad}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {partidaEsperadaSeleccionada && (
+                  <div
+                    style={{
+                      marginTop: "10px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <div>
+                      <strong>PO:</strong>{" "}
+                      {partidaEsperadaSeleccionada.purchase_order ??
+                        "No indicado"}
+                    </div>
+
+                    <div>
+                      <strong>Partida:</strong>{" "}
+                      {partidaEsperadaSeleccionada.partida ??
+                        "No indicada"}
+                    </div>
+
+                    <div>
+                      <strong>Número de parte:</strong>{" "}
+                      {partidaEsperadaSeleccionada.numero_parte ??
+                        "No indicado"}
+                    </div>
+
+                    <div>
+                      <strong>Archivo fuente:</strong>{" "}
+                      {partidaEsperadaSeleccionada.archivo_fuente ??
+                        "No indicado"}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {partidaEsperadaSeleccionada && (
+                <div
+                  className="scanner-status"
+                  style={{
+                    marginBottom: "14px",
+                    background:
+                      comparacionMercancia?.resultado === "COINCIDE"
+                        ? "#dcfce7"
+                        : comparacionMercancia?.resultado === "DIFERENCIA"
+                        ? "#fee2e2"
+                        : comparacionMercancia?.resultado === "DUDA"
+                        ? "#fef9c3"
+                        : "#f1f5f9",
+                    color:
+                      comparacionMercancia?.resultado === "COINCIDE"
+                        ? "#166534"
+                        : comparacionMercancia?.resultado === "DIFERENCIA"
+                        ? "#991b1b"
+                        : comparacionMercancia?.resultado === "DUDA"
+                        ? "#854d0e"
+                        : "#475569",
+                  }}
+                >
+                  {comparacionMercancia?.resultado === "COINCIDE" &&
+                    "🟢 COINCIDE — La mercancía coincide con la referencia documental."}
+
+                  {comparacionMercancia?.resultado === "DIFERENCIA" &&
+                    "🔴 DIFERENCIA — Se detectaron diferencias contra la referencia documental."}
+
+                  {comparacionMercancia?.resultado === "DUDA" &&
+                    "🟡 DUDA — Hay datos que requieren revisión humana."}
+
+                  {!comparacionMercancia &&
+                    "⚪ Referencia seleccionada. La comparación se actualizará con la lectura confirmada."}
+
+                  {comparacionMercancia?.resumen && (
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      Coinciden:{" "}
+                      {comparacionMercancia.resumen.coinciden ?? 0}
+                      {" · "}
+                      Diferencias:{" "}
+                      {comparacionMercancia.resumen.diferencias ?? 0}
+                      {" · "}
+                      Dudas:{" "}
+                      {comparacionMercancia.resumen.dudas ?? 0}
+                      {" · "}
+                      No aplica:{" "}
+                      {comparacionMercancia.resumen.no_aplica ?? 0}
+                    </div>
+                  )}
+
+                  {Array.isArray(comparacionMercancia?.comparaciones) &&
+                    comparacionMercancia.comparaciones
+                      .filter((c) =>
+                        ["DIFERENCIA", "DUDA"].includes(c?.resultado)
+                      )
+                      .map((c) => (
+                        <div
+                          key={c.campo}
+                          style={{
+                            marginTop: "10px",
+                            padding: "10px",
+                            borderRadius: "8px",
+                            background:
+                              c.resultado === "DIFERENCIA"
+                                ? "#fee2e2"
+                                : "#fef3c7",
+                            color:
+                              c.resultado === "DIFERENCIA"
+                                ? "#991b1b"
+                                : "#92400e",
+                            fontSize: "12px",
+                          }}
+                        >
+                          <strong>
+                            {c.resultado === "DIFERENCIA" ? "🔴" : "🟡"}{" "}
+                            {c.resultado} — {c.etiqueta || c.campo}
+                          </strong>
+
+                          <div style={{ marginTop: "5px" }}>
+                            Esperado:{" "}
+                            <strong>
+                              {c.esperado ?? "Sin dato"}
+                            </strong>
+                          </div>
+
+                          <div>
+                            Observado:{" "}
+                            <strong>
+                              {c.observado ?? "No detectado"}
+                            </strong>
+                          </div>
+
+                          {c.confianza_observada != null && (
+                            <div>
+                              Confianza OCR:{" "}
+                              {Math.round(
+                                Number(c.confianza_observada) * 100
+                              )}
+                              %
+                            </div>
+                          )}
+
+                          {c.razon && (
+                            <div style={{ marginTop: "4px" }}>
+                              Motivo: {c.razon}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                </div>
+              )}
+
+              <div
                 className="scanner-status"
                 style={{
                   marginBottom: "14px",
-                  background: lecturaConfirmada
-                    ? "#dcfce7"
-                    : "#fef9c3",
-                  color: lecturaConfirmada
-                    ? "#166534"
-                    : "#854d0e",
+                  background: !lecturaConfirmada
+                    ? "#fef9c3"
+                    : comparacionMercancia?.resultado ===
+                        "DIFERENCIA"
+                      ? "#fee2e2"
+                      : comparacionMercancia?.resultado ===
+                          "DUDA"
+                        ? "#fef3c7"
+                        : "#dcfce7",
+                  color: !lecturaConfirmada
+                    ? "#854d0e"
+                    : comparacionMercancia?.resultado ===
+                        "DIFERENCIA"
+                      ? "#991b1b"
+                      : comparacionMercancia?.resultado ===
+                          "DUDA"
+                        ? "#92400e"
+                        : "#166534",
                 }}
               >
                 {lecturaConfirmada
-                  ? "Datos confirmados por el operador."
+                  ? scanStatus
                   : "Verifica los datos contra la etiqueta física."}
               </div>
 
@@ -3204,15 +3533,49 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
                     <input
                       value={lecturaMercancia?.[campo] ?? ""}
                       placeholder="No visible"
-                      onChange={(e) =>
-                        setLecturaMercancia((actual) => ({
-                          ...(actual || {}),
-                          [campo]:
-                            e.target.value === ""
-                              ? null
-                              : e.target.value,
-                        }))
-                      }
+                      onChange={(e) => {
+                        setLecturaMercancia((actual) => {
+                          const previo = actual || {};
+                          const nuevaConfianza = {
+                            ...(previo.confianza || {}),
+                          };
+
+                          delete nuevaConfianza[campo];
+
+                          const camposCorregidos = Array.from(
+                            new Set([
+                              ...(previo.campos_corregidos || []),
+                              campo,
+                            ])
+                          );
+
+                          const requiereConfirmacion = Array.isArray(
+                            previo.requiere_confirmacion
+                          )
+                            ? previo.requiere_confirmacion.filter(
+                                (item) =>
+                                  item !== campo &&
+                                  !(
+                                    campo === "cantidad_visible" &&
+                                    item === "cantidad"
+                                  )
+                              )
+                            : [];
+
+                          return {
+                            ...previo,
+                            [campo]:
+                              e.target.value === ""
+                                ? null
+                                : e.target.value,
+                            confianza: nuevaConfianza,
+                            requiere_confirmacion:
+                              requiereConfirmacion,
+                            campos_corregidos: camposCorregidos,
+                          };
+                        });
+                        setComparacionMercancia(null);
+                      }}
                       style={{
                         width: "100%",
                         marginTop: "6px",
@@ -3287,12 +3650,48 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
                 }}
               >
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    let resultadoComparacion = null;
+
+                    if (
+                      partidaEsperadaSeleccionada &&
+                      lecturaMercancia
+                    ) {
+                      resultadoComparacion =
+                        await compararMercancia(
+                          partidaEsperadaSeleccionada,
+                          lecturaMercancia
+                        );
+                    }
+
                     setLecturaConfirmada(true);
                     setEditandoMercancia(false);
-                    setScanStatus(
-                      "Datos confirmados por el operador."
-                    );
+
+                    if (
+                      resultadoComparacion?.resultado ===
+                      "DIFERENCIA"
+                    ) {
+                      setScanStatus(
+                        "Datos revisados por el operador. Existe una diferencia documental."
+                      );
+                    } else if (
+                      resultadoComparacion?.resultado === "DUDA"
+                    ) {
+                      setScanStatus(
+                        "Datos revisados por el operador. Requiere atención."
+                      );
+                    } else if (
+                      resultadoComparacion?.resultado ===
+                      "COINCIDE"
+                    ) {
+                      setScanStatus(
+                        "Datos revisados por el operador. Coinciden con la referencia documental."
+                      );
+                    } else {
+                      setScanStatus(
+                        "Datos revisados por el operador."
+                      );
+                    }
                   }}
                 >
                   Confirmar datos
@@ -3315,6 +3714,7 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
                     setLecturaMercancia(null);
                     setLecturaConfirmada(false);
                     setEditandoMercancia(false);
+                    setComparacionMercancia(null);
                     setPreview(null);
                     setCalidad(null);
                     setScanStatus(

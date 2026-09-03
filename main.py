@@ -6050,7 +6050,22 @@ Debes responder EXACTAMENTE con este esquema:
   "peso_total": null,
   "peso_unidad": null,
   "direccion_origen": null,
-  "direccion_destino": null
+  "direccion_destino": null,
+  "partidas_esperadas": [
+    {
+      "purchase_order": null,
+      "partida": null,
+      "numero_parte": null,
+      "cantidad": null,
+      "unidad": null,
+      "descripcion": null,
+      "marca": null,
+      "modelo": null,
+      "lote": null,
+      "serie": null,
+      "pais_origen": null
+    }
+  ]
 }
 
 Reglas obligatorias:
@@ -6071,6 +6086,19 @@ Reglas obligatorias:
 - peso_unidad:
   - si ves LB o LBS devuelve "LBS"
   - si ves KG o KGS devuelve "KGS"
+- partidas_esperadas = partidas, líneas o renglones de mercancía esperada visibles en el documento.
+- Si el documento contiene varias partidas, devuelve un objeto separado por cada partida visible.
+- Si no existe ninguna partida identificable, devuelve [].
+- purchase_order = número de Purchase Order / PO asociado a la partida.
+- partida = número de línea / line / item.
+- numero_parte = part number / part no / número de parte.
+- cantidad = cantidad de mercancía de ESA PARTIDA; no confundir con cantidad_bultos.
+- unidad = unidad asociada a la cantidad, por ejemplo Each, EA, PCS, BOX.
+- descripcion dentro de cada partida = descripción específica de esa partida.
+- marca, modelo, lote, serie y pais_origen solo si aparecen explícitamente asociados a esa partida.
+- No deduzcas una partida usando únicamente datos generales del embarque.
+- No inventes PO, partida, número de parte, cantidad, unidad ni ningún otro dato.
+- Si un campo de una partida no es claramente visible, usa null.
 - Responde solo JSON válido.
 """
                             },
@@ -6103,7 +6131,8 @@ Reglas obligatorias:
                             "peso_total": None,
                             "peso_unidad": None,
                             "direccion_origen": None,
-                            "direccion_destino": None
+                            "direccion_destino": None,
+                            "partidas_esperadas": []
                         }
                 else:
                     ocr_json = {
@@ -6116,7 +6145,8 @@ Reglas obligatorias:
                         "peso_total": None,
                         "peso_unidad": None,
                         "direccion_origen": None,
-                        "direccion_destino": None
+                        "direccion_destino": None,
+                        "partidas_esperadas": []
                     }
 
             resultados.append({
@@ -6170,9 +6200,46 @@ Reglas obligatorias:
 
         return numero, unidad
 
+    partidas_esperadas = []
+    claves_partidas = set()
+
     for item in resultados:
         data = item.get("ocr_json", {})
         nombre_archivo = (item.get("archivo") or "").lower()
+
+        partidas_item = data.get("partidas_esperadas") or []
+
+        if isinstance(partidas_item, list):
+            for partida_doc in partidas_item:
+                if not isinstance(partida_doc, dict):
+                    continue
+
+                partida_normalizada = {
+                    "purchase_order": partida_doc.get("purchase_order"),
+                    "partida": partida_doc.get("partida"),
+                    "numero_parte": partida_doc.get("numero_parte"),
+                    "cantidad": partida_doc.get("cantidad"),
+                    "unidad": partida_doc.get("unidad"),
+                    "descripcion": partida_doc.get("descripcion"),
+                    "marca": partida_doc.get("marca"),
+                    "modelo": partida_doc.get("modelo"),
+                    "lote": partida_doc.get("lote"),
+                    "serie": partida_doc.get("serie"),
+                    "pais_origen": partida_doc.get("pais_origen"),
+                    "archivo_fuente": item.get("archivo"),
+                }
+
+                clave = (
+                    str(partida_normalizada.get("purchase_order") or "").strip().upper(),
+                    str(partida_normalizada.get("partida") or "").strip().upper(),
+                    str(partida_normalizada.get("numero_parte") or "").strip().upper(),
+                    str(partida_normalizada.get("cantidad") or "").strip().upper(),
+                    str(partida_normalizada.get("unidad") or "").strip().upper(),
+                )
+
+                if any(clave) and clave not in claves_partidas:
+                    claves_partidas.add(clave)
+                    partidas_esperadas.append(partida_normalizada)
 
         prioridad_cliente_proveedor = 1
         prioridad_tracking_paqueteria = 1
@@ -6361,8 +6428,141 @@ Reglas obligatorias:
         "limite_archivos": MAX_ARCHIVOS_POR_OPERACION,
         "errores": errores,
         "consolidado": consolidado,
+        "partidas_esperadas": partidas_esperadas,
         "resultados": resultados
     }
+
+
+
+# =========================================================
+# ARGO P003
+# MOTOR DETERMINISTICO DE COMPARACION DE MERCANCIA
+# Pilot branch only
+# =========================================================
+
+@app.post("/argo/comparar_mercancia")
+async def argo_comparar_mercancia(
+    request: Request,
+    payload: dict,
+):
+    """
+    Compara datos esperados de la documentacion contra los datos
+    observados por Camera PRO.
+
+    La decision COINCIDE / DIFERENCIA / DUDA es deterministica.
+    """
+
+    try:
+        # -------------------------------------------------
+        # AUTORIZACION / TENANT
+        # -------------------------------------------------
+
+        x_usuario_email = request.headers.get("x-usuario-email")
+
+        usuario_actual = obtener_usuario_rbac(x_usuario_email)
+
+        licencia = validar_licencia_saas(usuario_actual)
+
+        if not licencia.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=licencia,
+            )
+
+        validacion_modulo = validar_modulo_usuario(
+            usuario_actual,
+            "entrada_documental",
+        )
+
+        if not validacion_modulo.get("ok"):
+            return JSONResponse(
+                status_code=403,
+                content=validacion_modulo,
+            )
+
+        sesion = getattr(request.state, "sesion_argo", {}) or {}
+
+        cliente_id = (
+            sesion.get("id_cliente")
+            or usuario_actual.get("id_cliente")
+            or request.headers.get("x-cliente-id")
+        )
+
+        if not cliente_id:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "ok": False,
+                    "error": "Tenant no disponible en sesion",
+                    "codigo": "TENANT_REQUIRED",
+                },
+            )
+
+        # -------------------------------------------------
+        # VALIDACION DE ENTRADA
+        # -------------------------------------------------
+
+        if not isinstance(payload, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": "Payload invalido",
+                    "codigo": "PAYLOAD_INVALIDO",
+                },
+            )
+
+        esperado = payload.get("esperado")
+        observado = payload.get("observado")
+
+        if not isinstance(esperado, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": "Objeto esperado requerido",
+                    "codigo": "ESPERADO_REQUERIDO",
+                },
+            )
+
+        if not isinstance(observado, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": "Objeto observado requerido",
+                    "codigo": "OBSERVADO_REQUERIDO",
+                },
+            )
+
+        # -------------------------------------------------
+        # MOTOR DETERMINISTICO P003
+        # -------------------------------------------------
+
+        from argo_comparador import comparar_mercancia
+
+        resultado = comparar_mercancia(
+            esperado=esperado,
+            observado=observado,
+        )
+
+        return {
+            **resultado,
+            "cliente_id": cliente_id,
+        }
+
+    except Exception as e:
+
+        print("ERROR COMPARADOR MERCANCIA:", str(e))
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(e),
+                "codigo": "COMPARADOR_MERCANCIA_ERROR",
+            },
+        )
 
 
 # =========================================================
