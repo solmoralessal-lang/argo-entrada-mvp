@@ -1524,6 +1524,7 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
     setOperacionMultiparte(null);
     setResumenMultiparte(null);
     setReporteMultiparte(null);
+    setDiagnosticoP004(null);
 
     setProcesando(true);
     setReporteEjecutivo(null);
@@ -1648,48 +1649,170 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
 
       const data2 = await res2.json().catch(() => ({}));
 
-      // P004-PATCH-G - CAPTURA RESULTADO MULTIPARTE AUTORITATIVO
+      // === P004-PATCH-I: MERGE OCR + PIPELINE MULTIPARTE ===
+
+      const extraerMultiparte = (respuesta) => {
+        if (!respuesta || typeof respuesta !== "object") {
+          return {
+            operacion: null,
+            resumen: null,
+            reporte: null,
+          };
+        }
+
+        const candidatos = [
+          respuesta,
+          respuesta.resultado,
+          respuesta.operacion,
+          respuesta.data,
+          respuesta.salida,
+          respuesta.resultado?.operacion,
+          respuesta.data?.operacion,
+          respuesta.salida?.operacion,
+        ].filter(
+          (item) => item && typeof item === "object"
+        );
+
+        let operacion = null;
+        let resumen = null;
+        let reporte = null;
+
+        for (const item of candidatos) {
+          if (
+            !operacion &&
+            item.operacion_multiparte &&
+            typeof item.operacion_multiparte === "object"
+          ) {
+            operacion = item.operacion_multiparte;
+          }
+
+          if (
+            !resumen &&
+            item.resumen_multiparte &&
+            typeof item.resumen_multiparte === "object"
+          ) {
+            resumen = item.resumen_multiparte;
+          }
+
+          if (
+            !reporte &&
+            item.reporte_multiparte &&
+            typeof item.reporte_multiparte === "object"
+          ) {
+            reporte = item.reporte_multiparte;
+          }
+        }
+
+        if (!resumen && operacion) {
+          if (
+            operacion.resumen_final &&
+            typeof operacion.resumen_final === "object"
+          ) {
+            resumen = operacion.resumen_final;
+          } else if (
+            operacion.resumen &&
+            typeof operacion.resumen === "object"
+          ) {
+            resumen = operacion.resumen;
+          }
+        }
+
+        if (!reporte && resumen) {
+          if (
+            resumen.reporte_multiparte &&
+            typeof resumen.reporte_multiparte === "object"
+          ) {
+            reporte = resumen.reporte_multiparte;
+          }
+        }
+
+        if (!reporte && operacion) {
+          if (
+            operacion.reporte_multiparte &&
+            typeof operacion.reporte_multiparte === "object"
+          ) {
+            reporte = operacion.reporte_multiparte;
+          }
+        }
+
+        return {
+          operacion,
+          resumen,
+          reporte,
+        };
+      };
+
+      // La primera respuesta (/argo/ocr) ya contiene el
+      // expediente P004 completo.
+      const multiOcr = extraerMultiparte(data);
+
+      // La segunda respuesta puede traer una versión más rica
+      // después de pipeline, CLASS, persistencia y reporte.
+      const multiPipeline = extraerMultiparte(data2);
+
       const operacionMultiparteRespuesta =
-        data2?.operacion_multiparte ||
-        data2?.operacion?.operacion_multiparte ||
-        data2?.resultado?.operacion_multiparte ||
+        multiPipeline.operacion ||
+        multiOcr.operacion ||
         null;
 
       const resumenMultiparteRespuesta =
-        data2?.resumen_multiparte ||
-        data2?.operacion?.resumen_multiparte ||
-        data2?.resultado?.resumen_multiparte ||
-        operacionMultiparteRespuesta?.resumen ||
+        multiPipeline.resumen ||
+        multiOcr.resumen ||
+        operacionMultiparteRespuesta?.resumen_final ||
         null;
 
       const reporteMultiparteRespuesta =
-        data2?.reporte_multiparte ||
-        data2?.operacion?.reporte_multiparte ||
-        data2?.resultado?.reporte_multiparte ||
+        multiPipeline.reporte ||
+        multiOcr.reporte ||
+        resumenMultiparteRespuesta?.reporte_multiparte ||
         operacionMultiparteRespuesta?.reporte_multiparte ||
         null;
 
       setOperacionMultiparte(
-        operacionMultiparteRespuesta &&
-        typeof operacionMultiparteRespuesta === "object"
-          ? operacionMultiparteRespuesta
-          : null
+        operacionMultiparteRespuesta
       );
 
       setResumenMultiparte(
-        resumenMultiparteRespuesta &&
-        typeof resumenMultiparteRespuesta === "object"
-          ? resumenMultiparteRespuesta
-          : null
+        resumenMultiparteRespuesta
       );
 
       setReporteMultiparte(
-        reporteMultiparteRespuesta &&
-        typeof reporteMultiparteRespuesta === "object"
-          ? reporteMultiparteRespuesta
-          : null
+        reporteMultiparteRespuesta
       );
 
+      console.log(
+        "[P004-PATCH-I] multiparte combinado",
+        {
+          ocr: {
+            operacion: Boolean(multiOcr.operacion),
+            resumen: Boolean(multiOcr.resumen),
+            reporte: Boolean(multiOcr.reporte),
+          },
+          pipeline: {
+            operacion: Boolean(multiPipeline.operacion),
+            resumen: Boolean(multiPipeline.resumen),
+            reporte: Boolean(multiPipeline.reporte),
+          },
+          final: {
+            operacion:
+              Boolean(operacionMultiparteRespuesta),
+            resumen:
+              Boolean(resumenMultiparteRespuesta),
+            reporte:
+              Boolean(reporteMultiparteRespuesta),
+            partidas:
+              Array.isArray(
+                operacionMultiparteRespuesta?.partidas
+              )
+                ? operacionMultiparteRespuesta.partidas.length
+                : Array.isArray(
+                    reporteMultiparteRespuesta?.partidas
+                  )
+                  ? reporteMultiparteRespuesta.partidas.length
+                  : 0,
+          },
+        }
+      );
 
       if (!res2.ok || !data2.ok) {
         const mensajeConsolidacion =
@@ -2147,6 +2270,7 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
       {error && <div className="error">{error}</div>}
 
 
+
       {/* === P004-PATCH-G: TABLERO AUTOMATICO MULTIPARTE === */}
       {(operacionMultiparte || resumenMultiparte || reporteMultiparte) && (
         <section
@@ -2175,10 +2299,13 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
                 ? reporteMultiparte
                 : op.reporte_multiparte || {};
 
-            const partidas = Array.isArray(op.partidas)
-              ? op.partidas
-              : Array.isArray(reporte.partidas)
-                ? reporte.partidas
+            // P004-PATCH-N:
+            // El reporte multiparte es la representación final
+            // enriquecida para presentación (incluye argo_class).
+            const partidas = Array.isArray(reporte.partidas)
+              ? reporte.partidas
+              : Array.isArray(op.partidas)
+                ? op.partidas
                 : [];
 
             const valor = (v, fallback = "N/D") =>
@@ -2376,7 +2503,11 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
                           partida.resultado_comparacion ||
                           {};
 
+                        // P004-PATCH-O:
+                        // reporte_multiparte.partidas expone CLASS
+                        // resumido bajo argo_class.
                         const clasificacion =
+                          partida.argo_class ||
                           partida.clasificacion_argo_class ||
                           partida.class ||
                           partida.clasificacion ||
@@ -3509,11 +3640,16 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
             <button type="button">Descargar Reporte Ejecutivo ARGO</button>
           </a>
 
-          <p style={{ fontSize: "13px", color: "#475569" }}>
-                width: "100%",
-                flexBasis: "100%",
-                textAlign: "center",
-                marginTop: "4px",
+          <p
+            style={{
+              fontSize: "13px",
+              color: "#475569",
+              width: "100%",
+              flexBasis: "100%",
+              textAlign: "center",
+              marginTop: "4px",
+            }}
+          >
             Archivo: {reporteEjecutivo.archivo}
           </p>
         </section>

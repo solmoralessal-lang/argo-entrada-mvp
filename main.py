@@ -8080,28 +8080,38 @@ async def procesar_desde_ocr(
                     else {}
                 )
 
-                salida_class_p004 = (
-                    partida_p004.get("clasificacion_argo_class")
-                    if isinstance(
-                        partida_p004.get("clasificacion_argo_class"),
-                        dict,
+                # =============================================
+                # P004-PATCH-M
+                # CLASS se ejecuta REALMENTE por cada partida.
+                # =============================================
+                salida_class_p004 = {}
+
+                try:
+                    from argo_orquestador import clasificar_partida
+
+                    salida_class_p004 = clasificar_partida(
+                        partida_p004,
+                        id_operacion=id_operacion,
+                        id_shipment=tracking,
+                    ) or {}
+
+                except Exception as class_partida_err:
+                    print(
+                        "WARNING ARGO CLASS P004 "
+                        f"[{id_operacion}] "
+                        f"partida={indice_p004}: "
+                        f"{class_partida_err}"
                     )
-                    else (
-                        partida_p004.get("class")
-                        if isinstance(
-                            partida_p004.get("class"),
-                            dict,
-                        )
-                        else (
-                            partida_p004.get("salida_class")
-                            if isinstance(
-                                partida_p004.get("salida_class"),
-                                dict,
-                            )
-                            else {}
-                        )
-                    )
-                )
+
+                    salida_class_p004 = {}
+
+                    partida_p004[
+                        "clasificacion_argo_class"
+                    ] = {}
+
+                    partida_p004[
+                        "error_class"
+                    ] = str(class_partida_err)
 
                 salida_class_p004_body = (
                     salida_class_p004.get("salida")
@@ -8116,6 +8126,15 @@ async def procesar_desde_ocr(
                     salida_class_p004_body.get("clasificacion")
                     if isinstance(
                         salida_class_p004_body.get("clasificacion"),
+                        dict,
+                    )
+                    else {}
+                )
+
+                sector_p004 = (
+                    salida_class_p004_body.get("sector_ia")
+                    if isinstance(
+                        salida_class_p004_body.get("sector_ia"),
                         dict,
                     )
                     else {}
@@ -8231,6 +8250,10 @@ async def procesar_desde_ocr(
                         producto_p004,
                     "familia_detectada":
                         clas_p004.get("familia_detectada"),
+                    "sector_detectado":
+                        sector_p004.get("sector_detectado"),
+                    "confianza_sector_pct":
+                        sector_p004.get("confianza_sector_pct"),
                     "fraccion_sugerida":
                         fraccion_p004,
                     "confianza_fraccion_pct":
@@ -8279,6 +8302,38 @@ async def procesar_desde_ocr(
                 list(dict.fromkeys(productos_partidas)),
             "partidas": class_partidas,
         }
+
+        # =============================================
+        # P004-PATCH-M
+        # Refrescar reporte despues de CLASS por partida.
+        # =============================================
+        if tiene_multiparte:
+            try:
+                from argo_orquestador import (
+                    construir_reporte_multiparte,
+                )
+
+                # P004-PATCH-N:
+                # CLASS debe formar parte de la operación ANTES
+                # de reconstruir cualquier representación derivada.
+                operacion_multiparte[
+                    "class_multiparte"
+                ] = class_multiparte
+
+                reporte_multiparte = construir_reporte_multiparte(
+                    operacion_multiparte
+                )
+
+                operacion_multiparte[
+                    "reporte_multiparte"
+                ] = reporte_multiparte
+
+            except Exception as reporte_class_err:
+                print(
+                    "WARNING REPORTE P004 POST CLASS "
+                    f"[{id_operacion}]: "
+                    f"{reporte_class_err}"
+                )
 
         entrada_control = {
             "cliente": consolidado.get("cliente"),

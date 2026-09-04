@@ -110,7 +110,10 @@ UNIDADES = {
     "CAJAS": "BOX",
 
     "PACK": "PACK",
+    "PK": "PACK",
+    "PACKS": "PACK",
     "PACKAGE": "PACK",
+    "PACKAGES": "PACK",
     "PAQUETE": "PACK",
     "PAQUETES": "PACK",
 }
