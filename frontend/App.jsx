@@ -179,6 +179,12 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
   const [comparacionMercancia, setComparacionMercancia] = useState(null);
 
   const [reporteEjecutivo, setReporteEjecutivo] = useState(null);
+
+  // === P004-PATCH-G: FRONTEND MULTIPARTE ===
+  const [operacionMultiparte, setOperacionMultiparte] = useState(null);
+  const [resumenMultiparte, setResumenMultiparte] = useState(null);
+  const [reporteMultiparte, setReporteMultiparte] = useState(null);
+
   const [resultadoCarga, setResultadoCarga] = useState({
     archivosRecibidos: 0,
     archivosProcesados: 0,
@@ -1514,6 +1520,11 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
     setPartidaEsperadaSeleccionada(null);
     setComparacionMercancia(null);
 
+    // P004-PATCH-G
+    setOperacionMultiparte(null);
+    setResumenMultiparte(null);
+    setReporteMultiparte(null);
+
     setProcesando(true);
     setReporteEjecutivo(null);
     setResultadoCarga({
@@ -1636,6 +1647,49 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
       );
 
       const data2 = await res2.json().catch(() => ({}));
+
+      // P004-PATCH-G - CAPTURA RESULTADO MULTIPARTE AUTORITATIVO
+      const operacionMultiparteRespuesta =
+        data2?.operacion_multiparte ||
+        data2?.operacion?.operacion_multiparte ||
+        data2?.resultado?.operacion_multiparte ||
+        null;
+
+      const resumenMultiparteRespuesta =
+        data2?.resumen_multiparte ||
+        data2?.operacion?.resumen_multiparte ||
+        data2?.resultado?.resumen_multiparte ||
+        operacionMultiparteRespuesta?.resumen ||
+        null;
+
+      const reporteMultiparteRespuesta =
+        data2?.reporte_multiparte ||
+        data2?.operacion?.reporte_multiparte ||
+        data2?.resultado?.reporte_multiparte ||
+        operacionMultiparteRespuesta?.reporte_multiparte ||
+        null;
+
+      setOperacionMultiparte(
+        operacionMultiparteRespuesta &&
+        typeof operacionMultiparteRespuesta === "object"
+          ? operacionMultiparteRespuesta
+          : null
+      );
+
+      setResumenMultiparte(
+        resumenMultiparteRespuesta &&
+        typeof resumenMultiparteRespuesta === "object"
+          ? resumenMultiparteRespuesta
+          : null
+      );
+
+      setReporteMultiparte(
+        reporteMultiparteRespuesta &&
+        typeof reporteMultiparteRespuesta === "object"
+          ? reporteMultiparteRespuesta
+          : null
+      );
+
 
       if (!res2.ok || !data2.ok) {
         const mensajeConsolidacion =
@@ -2091,6 +2145,547 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
         <main className="argo-main-content">
 
       {error && <div className="error">{error}</div>}
+
+
+      {/* === P004-PATCH-G: TABLERO AUTOMATICO MULTIPARTE === */}
+      {(operacionMultiparte || resumenMultiparte || reporteMultiparte) && (
+        <section
+          className="panel"
+          style={{
+            border: "2px solid #bfdbfe",
+            background: "#f8fbff",
+          }}
+        >
+          {(() => {
+            const op =
+              operacionMultiparte &&
+              typeof operacionMultiparte === "object"
+                ? operacionMultiparte
+                : {};
+
+            const resumen =
+              resumenMultiparte &&
+              typeof resumenMultiparte === "object"
+                ? resumenMultiparte
+                : op.resumen || {};
+
+            const reporte =
+              reporteMultiparte &&
+              typeof reporteMultiparte === "object"
+                ? reporteMultiparte
+                : op.reporte_multiparte || {};
+
+            const partidas = Array.isArray(op.partidas)
+              ? op.partidas
+              : Array.isArray(reporte.partidas)
+                ? reporte.partidas
+                : [];
+
+            const valor = (v, fallback = "N/D") =>
+              v === null || v === undefined || v === ""
+                ? fallback
+                : v;
+
+            const numero = (v) => {
+              const n = Number(v);
+              return Number.isFinite(n) ? n : 0;
+            };
+
+            const estadoOperacion =
+              resumen.estado ||
+              reporte.estado ||
+              op.estado ||
+              "PROCESADA";
+
+            const diferencias =
+              numero(resumen.diferencias) ||
+              numero(reporte.diferencias);
+
+            const dudas =
+              numero(resumen.dudas) ||
+              numero(reporte.dudas);
+
+            const excepciones =
+              numero(resumen.excepciones_humanas) ||
+              (Array.isArray(op.excepciones_humanas)
+                ? op.excepciones_humanas.length
+                : 0);
+
+            const colorEstado =
+              diferencias > 0
+                ? {
+                    bg: "#fee2e2",
+                    fg: "#991b1b",
+                    border: "#fecaca",
+                  }
+                : dudas > 0 || excepciones > 0
+                  ? {
+                      bg: "#fef3c7",
+                      fg: "#92400e",
+                      border: "#fde68a",
+                    }
+                  : {
+                      bg: "#dcfce7",
+                      fg: "#166534",
+                      border: "#bbf7d0",
+                    };
+
+            return (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: "14px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <h2 style={{ margin: 0 }}>
+                      Verificación automática multiparte
+                    </h2>
+
+                    <p
+                      style={{
+                        margin: "6px 0 0",
+                        color: "#475569",
+                      }}
+                    >
+                      ARGO separó documentos y mercancía, asoció las
+                      evidencias y verificó cada partida de forma
+                      independiente.
+                    </p>
+                  </div>
+
+                  <span
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: "999px",
+                      fontWeight: 800,
+                      background: colorEstado.bg,
+                      color: colorEstado.fg,
+                      border: `1px solid ${colorEstado.border}`,
+                    }}
+                  >
+                    {estadoOperacion}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(135px, 1fr))",
+                    gap: "10px",
+                    marginTop: "18px",
+                  }}
+                >
+                  {[
+                    [
+                      "Partidas",
+                      numero(resumen.partidas_totales) ||
+                        numero(resumen.partidas_documentales) ||
+                        partidas.length,
+                    ],
+                    [
+                      "Con evidencia",
+                      numero(resumen.partidas_con_evidencia),
+                    ],
+                    [
+                      "Coinciden",
+                      numero(resumen.coinciden),
+                    ],
+                    [
+                      "Diferencias",
+                      diferencias,
+                    ],
+                    [
+                      "Dudas",
+                      dudas,
+                    ],
+                    [
+                      "Revisión humana",
+                      excepciones,
+                    ],
+                  ].map(([titulo, dato]) => (
+                    <div
+                      key={titulo}
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #dbeafe",
+                        borderRadius: "12px",
+                        padding: "12px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "24px",
+                          fontWeight: 800,
+                          color: "#0f172a",
+                        }}
+                      >
+                        {dato}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "3px",
+                          fontSize: "12px",
+                          color: "#64748b",
+                        }}
+                      >
+                        {titulo}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {partidas.length > 0 && (
+                  <div style={{ marginTop: "20px" }}>
+                    <h3 style={{ marginBottom: "12px" }}>
+                      Partidas verificadas
+                    </h3>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(300px, 1fr))",
+                        gap: "14px",
+                      }}
+                    >
+                      {partidas.map((partida, index) => {
+                        const documental =
+                          partida.referencia_documental ||
+                          partida.documental ||
+                          {};
+
+                        const fisico =
+                          partida.dato_fisico ||
+                          partida.datos_fisicos ||
+                          partida.fisico ||
+                          {};
+
+                        const operativo =
+                          partida.dato_operativo || {};
+
+                        const comparacion =
+                          partida.comparacion ||
+                          partida.resultado_comparacion ||
+                          {};
+
+                        const clasificacion =
+                          partida.clasificacion_argo_class ||
+                          partida.class ||
+                          partida.clasificacion ||
+                          {};
+
+                        const resultadoComparacion =
+                          comparacion.resultado ||
+                          partida.resultado_comparacion ||
+                          (
+                            partida.estado === "VERIFICADA"
+                              ? "COINCIDE"
+                              : partida.estado ===
+                                  "DIFERENCIA_DOCUMENTAL"
+                                ? "DIFERENCIA"
+                                : "PENDIENTE"
+                          );
+
+                        const color =
+                          resultadoComparacion === "COINCIDE"
+                            ? {
+                                bg: "#f0fdf4",
+                                border: "#bbf7d0",
+                                fg: "#166534",
+                              }
+                            : resultadoComparacion === "DIFERENCIA"
+                              ? {
+                                  bg: "#fef2f2",
+                                  border: "#fecaca",
+                                  fg: "#991b1b",
+                                }
+                              : {
+                                  bg: "#fffbeb",
+                                  border: "#fde68a",
+                                  fg: "#92400e",
+                                };
+
+                        const diferenciasPartida =
+                          Array.isArray(comparacion.comparaciones)
+                            ? comparacion.comparaciones.filter((c) =>
+                                ["DIFERENCIA", "DUDA"].includes(
+                                  c?.resultado
+                                )
+                              )
+                            : [];
+
+                        return (
+                          <div
+                            key={
+                              partida.indice ??
+                              partida.indice_partida ??
+                              index
+                            }
+                            style={{
+                              border: `1px solid ${color.border}`,
+                              borderRadius: "16px",
+                              overflow: "hidden",
+                              background: "#ffffff",
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: "12px 14px",
+                                background: color.bg,
+                                color: color.fg,
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: "8px",
+                              }}
+                            >
+                              <strong>
+                                Partida{" "}
+                                {valor(
+                                  partida.indice ??
+                                    partida.indice_partida ??
+                                    documental.partida ??
+                                    index + 1
+                                )}
+                              </strong>
+
+                              <strong>
+                                {resultadoComparacion}
+                              </strong>
+                            </div>
+
+                            <div style={{ padding: "14px" }}>
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1fr 1fr",
+                                  gap: "10px",
+                                  fontSize: "13px",
+                                }}
+                              >
+                                <div>
+                                  <strong>PO</strong>
+                                  <br />
+                                  {valor(
+                                    documental.purchase_order ??
+                                      operativo.purchase_order
+                                  )}
+                                </div>
+
+                                <div>
+                                  <strong>Producto</strong>
+                                  <br />
+                                  {valor(
+                                    clasificacion.producto_detectado ??
+                                      operativo.descripcion ??
+                                      fisico.descripcion
+                                  )}
+                                </div>
+
+                                <div>
+                                  <strong>Parte documental</strong>
+                                  <br />
+                                  {valor(documental.numero_parte)}
+                                </div>
+
+                                <div>
+                                  <strong>Parte física</strong>
+                                  <br />
+                                  {valor(
+                                    fisico.numero_parte ??
+                                      partida.dato_fisico?.numero_parte
+                                  )}
+                                </div>
+
+                                <div>
+                                  <strong>Dato operativo</strong>
+                                  <br />
+                                  {valor(operativo.numero_parte)}
+                                </div>
+
+                                <div>
+                                  <strong>Marca</strong>
+                                  <br />
+                                  {valor(
+                                    operativo.marca ??
+                                      fisico.marca ??
+                                      documental.marca
+                                  )}
+                                </div>
+
+                                <div>
+                                  <strong>Modelo</strong>
+                                  <br />
+                                  {valor(
+                                    operativo.modelo ??
+                                      fisico.modelo ??
+                                      documental.modelo
+                                  )}
+                                </div>
+
+                                <div>
+                                  <strong>Evidencias</strong>
+                                  <br />
+                                  {Array.isArray(partida.evidencias)
+                                    ? partida.evidencias.length
+                                    : 0}
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  marginTop: "14px",
+                                  paddingTop: "12px",
+                                  borderTop: "1px solid #e2e8f0",
+                                }}
+                              >
+                                <strong>ARGO CLASS</strong>
+
+                                <div
+                                  style={{
+                                    marginTop: "7px",
+                                    fontSize: "13px",
+                                  }}
+                                >
+                                  Sector:{" "}
+                                  <strong>
+                                    {valor(
+                                      clasificacion.sector_detectado
+                                    )}
+                                  </strong>
+                                  {" · "}
+                                  Fracción:{" "}
+                                  <strong>
+                                    {valor(
+                                      clasificacion.fraccion_sugerida
+                                    )}
+                                  </strong>
+                                </div>
+
+                                <div
+                                  style={{
+                                    marginTop: "4px",
+                                    fontSize: "12px",
+                                    color: "#64748b",
+                                  }}
+                                >
+                                  Estado CLASS:{" "}
+                                  {valor(
+                                    clasificacion.estado_clasificacion
+                                  )}
+                                </div>
+                              </div>
+
+                              {diferenciasPartida.length > 0 && (
+                                <div
+                                  style={{
+                                    marginTop: "14px",
+                                    padding: "10px",
+                                    borderRadius: "10px",
+                                    background: "#fff7ed",
+                                    border: "1px solid #fed7aa",
+                                  }}
+                                >
+                                  <strong>
+                                    Diferencias / dudas detectadas
+                                  </strong>
+
+                                  {diferenciasPartida.map(
+                                    (item, itemIndex) => (
+                                      <div
+                                        key={
+                                          item.campo || itemIndex
+                                        }
+                                        style={{
+                                          marginTop: "7px",
+                                          fontSize: "12px",
+                                        }}
+                                      >
+                                        <strong>
+                                          {item.etiqueta ||
+                                            item.campo ||
+                                            "Campo"}
+                                        </strong>
+                                        :{" "}
+                                        {valor(item.esperado, "Sin dato")}
+                                        {" → "}
+                                        {valor(
+                                          item.observado,
+                                          "No detectado"
+                                        )}
+                                      </div>
+                                    )
+                                  )}
+                                </div>
+                              )}
+
+                              {clasificacion.requiere_validacion_tecnica ===
+                                true && (
+                                <div
+                                  style={{
+                                    marginTop: "12px",
+                                    padding: "9px",
+                                    borderRadius: "10px",
+                                    background: "#fef3c7",
+                                    color: "#92400e",
+                                    fontSize: "12px",
+                                  }}
+                                >
+                                  Requiere validación técnica antes de
+                                  utilizar la clasificación como
+                                  definitiva.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {excepciones > 0 && (
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      padding: "12px",
+                      borderRadius: "12px",
+                      background: "#fff7ed",
+                      border: "1px solid #fed7aa",
+                      color: "#9a3412",
+                    }}
+                  >
+                    <strong>
+                      Hay evidencia que requiere revisión humana.
+                    </strong>{" "}
+                    El resto de las partidas procesadas conserva su
+                    resultado automático.
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: "16px",
+                    fontSize: "12px",
+                    color: "#64748b",
+                  }}
+                >
+                  Cámara PRO permanece disponible como modo manual de
+                  verificación y contingencia.
+                </div>
+              </>
+            );
+          })()}
+        </section>
+      )}
 
       <section className="panel">
         <h2>Módulos disponibles</h2>
