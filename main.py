@@ -7950,8 +7950,56 @@ async def procesar_desde_ocr(
 
         ocr["consolidado"] = consolidado
 
+        # === P004-PATCH-E: PIPELINE MULTIPARTE AUTORITATIVO ===
+        operacion_multiparte = (
+            ocr.get("operacion_multiparte")
+            if isinstance(ocr.get("operacion_multiparte"), dict)
+            else {}
+        )
+
+        resumen_multiparte = (
+            ocr.get("resumen_multiparte")
+            if isinstance(ocr.get("resumen_multiparte"), dict)
+            else {}
+        )
+
+        if not resumen_multiparte and operacion_multiparte:
+            resumen_multiparte = (
+                operacion_multiparte.get("resumen_final")
+                if isinstance(
+                    operacion_multiparte.get("resumen_final"),
+                    dict,
+                )
+                else {}
+            )
+
+        reporte_multiparte = (
+            resumen_multiparte.get("reporte_multiparte")
+            if isinstance(
+                resumen_multiparte.get("reporte_multiparte"),
+                dict,
+            )
+            else {}
+        )
+
+        partidas_multiparte = (
+            operacion_multiparte.get("partidas", [])
+            if isinstance(operacion_multiparte, dict)
+            else []
+        )
+
+        if not isinstance(partidas_multiparte, list):
+            partidas_multiparte = []
+
+        tiene_multiparte = bool(partidas_multiparte)
+
         tracking = consolidado.get("tracking") or generar_id_operacion()
         id_operacion = generar_id_operacion()
+
+        # Sincronizar identidad del expediente P004 con la operacion real.
+        if operacion_multiparte:
+            operacion_multiparte["id_operacion_pipeline"] = id_operacion
+            operacion_multiparte["tracking"] = tracking
 
         cliente_id = (
             usuario_actual.get("id_cliente")
@@ -7997,22 +8045,292 @@ async def procesar_desde_ocr(
         class_clasificacion = class_salida.get("clasificacion", {}) or {}
         class_riesgo = class_salida.get("certeza_y_riesgo", {}) or {}
 
+        # =================================================
+        # P004-PATCH-E
+        # CLASS DE MERCANCIA: AUTORITATIVO POR PARTIDA
+        # =================================================
+        class_partidas = []
+        fracciones_partidas = []
+        productos_partidas = []
+        partidas_revision = 0
+        partidas_diferencia = 0
+
+        if tiene_multiparte:
+            for partida_p004 in partidas_multiparte:
+                if not isinstance(partida_p004, dict):
+                    continue
+
+                indice_p004 = partida_p004.get("indice")
+
+                dato_operativo_p004 = (
+                    partida_p004.get("dato_operativo")
+                    if isinstance(
+                        partida_p004.get("dato_operativo"),
+                        dict,
+                    )
+                    else {}
+                )
+
+                referencia_p004 = (
+                    partida_p004.get("referencia_documental")
+                    if isinstance(
+                        partida_p004.get("referencia_documental"),
+                        dict,
+                    )
+                    else {}
+                )
+
+                salida_class_p004 = (
+                    partida_p004.get("clasificacion_argo_class")
+                    if isinstance(
+                        partida_p004.get("clasificacion_argo_class"),
+                        dict,
+                    )
+                    else (
+                        partida_p004.get("class")
+                        if isinstance(
+                            partida_p004.get("class"),
+                            dict,
+                        )
+                        else (
+                            partida_p004.get("salida_class")
+                            if isinstance(
+                                partida_p004.get("salida_class"),
+                                dict,
+                            )
+                            else {}
+                        )
+                    )
+                )
+
+                salida_class_p004_body = (
+                    salida_class_p004.get("salida")
+                    if isinstance(
+                        salida_class_p004.get("salida"),
+                        dict,
+                    )
+                    else {}
+                )
+
+                clas_p004 = (
+                    salida_class_p004_body.get("clasificacion")
+                    if isinstance(
+                        salida_class_p004_body.get("clasificacion"),
+                        dict,
+                    )
+                    else {}
+                )
+
+                score_p004 = (
+                    salida_class_p004_body.get("score_documental")
+                    if isinstance(
+                        salida_class_p004_body.get(
+                            "score_documental"
+                        ),
+                        dict,
+                    )
+                    else {}
+                )
+
+                riesgo_p004 = (
+                    salida_class_p004_body.get("certeza_y_riesgo")
+                    if isinstance(
+                        salida_class_p004_body.get(
+                            "certeza_y_riesgo"
+                        ),
+                        dict,
+                    )
+                    else {}
+                )
+
+                comparacion_p004 = (
+                    partida_p004.get("comparacion")
+                    if isinstance(
+                        partida_p004.get("comparacion"),
+                        dict,
+                    )
+                    else {}
+                )
+
+                resultado_comparacion = (
+                    comparacion_p004.get("resultado_general")
+                    or partida_p004.get("resultado_comparacion")
+                )
+
+                if resultado_comparacion == "DIFERENCIA":
+                    partidas_diferencia += 1
+
+                estado_partida_p004 = (
+                    partida_p004.get("estado")
+                    or "SIN_ESTADO"
+                )
+
+                estado_class_p004 = (
+                    clas_p004.get("estado_clasificacion")
+                    or partida_p004.get("estado_clasificacion")
+                )
+
+                if (
+                    estado_partida_p004 == "REQUIERE_REVISION"
+                    or estado_class_p004
+                    == "REQUIERE_VALIDACION_TECNICA"
+                ):
+                    partidas_revision += 1
+
+                fraccion_p004 = clas_p004.get(
+                    "fraccion_sugerida"
+                )
+
+                if fraccion_p004:
+                    fracciones_partidas.append(
+                        str(fraccion_p004)
+                    )
+
+                producto_p004 = (
+                    clas_p004.get("producto_detectado")
+                    or partida_p004.get("producto_detectado")
+                    or dato_operativo_p004.get("descripcion")
+                )
+
+                if producto_p004:
+                    productos_partidas.append(
+                        str(producto_p004)
+                    )
+
+                class_partidas.append({
+                    "indice": indice_p004,
+                    "partida": (
+                        dato_operativo_p004.get("partida")
+                        or referencia_p004.get("partida")
+                    ),
+                    "numero_parte_documental":
+                        referencia_p004.get("numero_parte"),
+                    "numero_parte_operativo":
+                        dato_operativo_p004.get("numero_parte"),
+                    "descripcion_operativa":
+                        dato_operativo_p004.get("descripcion"),
+                    "marca_operativa":
+                        dato_operativo_p004.get("marca"),
+                    "modelo_operativo":
+                        dato_operativo_p004.get("modelo"),
+                    "cantidad_operativa":
+                        dato_operativo_p004.get("cantidad"),
+                    "unidad_operativa":
+                        dato_operativo_p004.get("unidad"),
+                    "lote_operativo":
+                        dato_operativo_p004.get("lote"),
+                    "serie_operativa":
+                        dato_operativo_p004.get("serie"),
+                    "pais_origen_operativo":
+                        dato_operativo_p004.get("pais_origen"),
+                    "resultado_comparacion":
+                        resultado_comparacion,
+                    "estado_partida":
+                        estado_partida_p004,
+                    "producto_detectado":
+                        producto_p004,
+                    "familia_detectada":
+                        clas_p004.get("familia_detectada"),
+                    "fraccion_sugerida":
+                        fraccion_p004,
+                    "confianza_fraccion_pct":
+                        clas_p004.get(
+                            "confianza_fraccion_pct"
+                        ),
+                    "estado_clasificacion":
+                        estado_class_p004,
+                    "requiere_validacion_tecnica":
+                        clas_p004.get(
+                            "requiere_validacion_tecnica"
+                        ),
+                    "informacion_faltante":
+                        clas_p004.get(
+                            "informacion_faltante",
+                            [],
+                        ),
+                    "score_documental":
+                        score_p004.get(
+                            "score_total_0_100"
+                        ),
+                    "nivel_debida_diligencia":
+                        score_p004.get(
+                            "nivel_debida_diligencia"
+                        ),
+                    "riesgo_automatico":
+                        riesgo_p004.get(
+                            "riesgo_automatico"
+                        ),
+                })
+
+        class_multiparte = {
+            "modo": (
+                "POR_PARTIDA"
+                if tiene_multiparte
+                else "LEGACY_GLOBAL"
+            ),
+            "partidas_totales": len(class_partidas),
+            "partidas_requieren_revision":
+                partidas_revision,
+            "partidas_con_diferencia":
+                partidas_diferencia,
+            "fracciones_sugeridas":
+                list(dict.fromkeys(fracciones_partidas)),
+            "productos_detectados":
+                list(dict.fromkeys(productos_partidas)),
+            "partidas": class_partidas,
+        }
+
         entrada_control = {
             "cliente": consolidado.get("cliente"),
             "shipment_id": tracking,
             "tracking": tracking,
             "proveedor": consolidado.get("proveedor"),
             "paqueteria": consolidado.get("paqueteria"),
-            "descripcion": consolidado.get("descripcion"),
+            "descripcion": (
+                f"Operacion multiparte con {len(partidas_multiparte)} partida(s)"
+                if tiene_multiparte
+                else consolidado.get("descripcion")
+            ),
             "peso_total": consolidado.get("peso_total"),
-            "cantidad": consolidado.get("cantidad") or consolidado.get("cantidad_bultos"),
+            "cantidad": (
+                len(partidas_multiparte)
+                if tiene_multiparte
+                else (
+                    consolidado.get("cantidad")
+                    or consolidado.get("cantidad_bultos")
+                )
+            ),
             "cantidad_bultos": consolidado.get("cantidad_bultos"),
-            "marca": consolidado.get("marca"),
-            "modelo": consolidado.get("modelo"),
-            "no_parte": consolidado.get("no_parte"),
-            "no_lote": consolidado.get("no_lote"),
-            "no_serie": consolidado.get("no_serie"),
-            "pais_origen": consolidado.get("pais_origen"),
+            "marca": (
+                None
+                if tiene_multiparte
+                else consolidado.get("marca")
+            ),
+            "modelo": (
+                None
+                if tiene_multiparte
+                else consolidado.get("modelo")
+            ),
+            "no_parte": (
+                None
+                if tiene_multiparte
+                else consolidado.get("no_parte")
+            ),
+            "no_lote": (
+                None
+                if tiene_multiparte
+                else consolidado.get("no_lote")
+            ),
+            "no_serie": (
+                None
+                if tiene_multiparte
+                else consolidado.get("no_serie")
+            ),
+            "pais_origen": (
+                None
+                if tiene_multiparte
+                else consolidado.get("pais_origen")
+            ),
         }
 
         control_generado = argo_control_validar({
@@ -8063,9 +8381,48 @@ async def procesar_desde_ocr(
             "fecha": timestamp_operacion,
             "timestamp_local": timestamp_operacion,
             "ocr": ocr,
+
+            # CLASS global se conserva por compatibilidad legacy.
             "class": salida_class,
+
+            # P004 es la fuente autoritativa de mercancia cuando
+            # existen partidas independientes.
+            "modo_mercancia": (
+                "MULTIPARTE"
+                if tiene_multiparte
+                else "LEGACY"
+            ),
+            "operacion_multiparte": (
+                operacion_multiparte
+                if tiene_multiparte
+                else None
+            ),
+            "resumen_multiparte": (
+                resumen_multiparte
+                if tiene_multiparte
+                else None
+            ),
+            "reporte_multiparte": (
+                reporte_multiparte
+                if tiene_multiparte
+                else None
+            ),
+            "class_multiparte": class_multiparte,
+
             "control": control_generado,
-            "semaforo_operacion": ocr.get("severidad_maxima") or "MEDIA",
+            "semaforo_operacion": (
+                (
+                    resumen_multiparte.get(
+                        "estado_operacion"
+                    )
+                    or operacion_multiparte.get("estado")
+                )
+                if tiene_multiparte
+                else (
+                    ocr.get("severidad_maxima")
+                    or "MEDIA"
+                )
+            ),
             "decision": {
                 "accion": "CONTINUAR_CON_ALERTA"
             },
@@ -8094,6 +8451,37 @@ async def procesar_desde_ocr(
             "validaciones_operativas": control_info.get("validaciones_operativas", []),
         }
 
+        if tiene_multiparte:
+            resumen_operativo["modo_mercancia"] = "MULTIPARTE"
+            resumen_operativo["partidas_totales"] = (
+                resumen_multiparte.get("partidas_totales")
+                or len(partidas_multiparte)
+            )
+            resumen_operativo["partidas_coinciden"] = (
+                resumen_multiparte.get("coinciden", 0)
+            )
+            resumen_operativo["partidas_diferencias"] = (
+                resumen_multiparte.get("diferencias", 0)
+            )
+            resumen_operativo["partidas_dudas"] = (
+                resumen_multiparte.get("dudas", 0)
+            )
+            resumen_operativo[
+                "partidas_requieren_revision"
+            ] = class_multiparte.get(
+                "partidas_requieren_revision",
+                0,
+            )
+            resumen_operativo[
+                "estado_multiparte"
+            ] = (
+                resumen_multiparte.get("estado_operacion")
+                or operacion_multiparte.get("estado")
+            )
+            resumen_operativo[
+                "class_por_partida"
+            ] = class_partidas
+
         operacion["resumen_operativo"] = resumen_operativo
 
         data_reporte = {
@@ -8102,13 +8490,76 @@ async def procesar_desde_ocr(
             "tracking": tracking,
             "proveedor": consolidado.get("proveedor"),
             "paqueteria": consolidado.get("paqueteria"),
-            "descripcion": consolidado.get("descripcion"),
+            "descripcion": (
+                (
+                    f"Operacion multiparte: "
+                    f"{len(partidas_multiparte)} partida(s); "
+                    f"{resumen_multiparte.get('coinciden', 0)} coincide(n); "
+                    f"{resumen_multiparte.get('diferencias', 0)} diferencia(s); "
+                    f"{resumen_multiparte.get('dudas', 0)} duda(s)."
+                )
+                if tiene_multiparte
+                else consolidado.get("descripcion")
+            ),
             "peso_total": consolidado.get("peso_total"),
             "cantidad_bultos": consolidado.get("cantidad_bultos"),
+            "modo_mercancia": (
+                "MULTIPARTE"
+                if tiene_multiparte
+                else "LEGACY"
+            ),
+            "partidas_totales": (
+                len(partidas_multiparte)
+                if tiene_multiparte
+                else 1
+            ),
+            "partidas_detalle": (
+                class_partidas
+                if tiene_multiparte
+                else []
+            ),
+            "estado_multiparte": (
+                resumen_multiparte.get("estado_operacion")
+                if tiene_multiparte
+                else None
+            ),
             "riesgo_automatico": class_riesgo.get("riesgo_automatico") or resumen_operativo.get("estado") or ocr.get("severidad_maxima") or "MEDIA",
             "score_documental": class_score.get("score_total_0_100") or ocr.get("score_documental_global") or 0,
-            "fraccion_sugerida": class_clasificacion.get("fraccion_sugerida") or ocr.get("fraccion_sugerida") or "7318.15.99",
-            "confianza_fraccion_pct": class_clasificacion.get("confianza_fraccion_pct") or ocr.get("confianza_fraccion_pct") or 0,
+            "fraccion_sugerida": (
+                (
+                    "VER_DETALLE_POR_PARTIDA"
+                    if len(
+                        class_multiparte.get(
+                            "fracciones_sugeridas",
+                            [],
+                        )
+                    ) != 1
+                    else class_multiparte[
+                        "fracciones_sugeridas"
+                    ][0]
+                )
+                if tiene_multiparte
+                else (
+                    class_clasificacion.get(
+                        "fraccion_sugerida"
+                    )
+                    or ocr.get("fraccion_sugerida")
+                    or "7318.15.99"
+                )
+            ),
+            "confianza_fraccion_pct": (
+                0
+                if tiene_multiparte
+                else (
+                    class_clasificacion.get(
+                        "confianza_fraccion_pct"
+                    )
+                    or ocr.get(
+                        "confianza_fraccion_pct"
+                    )
+                    or 0
+                )
+            ),
             "certeza_final_pct": class_riesgo.get("certeza_final_pct") or ocr.get("certeza_final_pct") or 0,
             "nivel_debida_diligencia": class_score.get("nivel_debida_diligencia") or ocr.get("nivel_debida_diligencia") or "BASICA",
             "semaforo_operativo": resumen_operativo.get("semaforo"),
@@ -8167,6 +8618,26 @@ async def procesar_desde_ocr(
             "debug_guardado": guardado,
             "operacion": guardado,
             "resumen_operativo": resumen_operativo,
+            "modo_mercancia": (
+                "MULTIPARTE"
+                if tiene_multiparte
+                else "LEGACY"
+            ),
+            "resumen_multiparte": (
+                resumen_multiparte
+                if tiene_multiparte
+                else None
+            ),
+            "class_multiparte": (
+                class_multiparte
+                if tiene_multiparte
+                else None
+            ),
+            "reporte_multiparte": (
+                reporte_multiparte
+                if tiene_multiparte
+                else None
+            ),
             "reporte_ejecutivo": {
                 "archivo": nombre_reporte,
                 "descarga": f"/descargar/{nombre_reporte}"
