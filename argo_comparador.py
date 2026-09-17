@@ -65,7 +65,7 @@ CAMPOS = {
     "pais_origen": {
         "etiqueta": "Pais de origen",
         "criticidad": "COMPLEMENTARIA",
-        "tipo": "texto",
+        "tipo": "pais",
     },
     "descripcion": {
         "etiqueta": "Descripcion",
@@ -155,6 +155,26 @@ def _normalizar_texto(valor: Any) -> Optional[str]:
     return texto.strip()
 
 
+def _normalizar_pais(valor: Any) -> Optional[str]:
+    if _ausente(valor):
+        return None
+
+    texto = _texto(valor)
+    compacto = re.sub(r"[^A-Z]", "", texto)
+
+    aliases_usa = {
+        "US",
+        "USA",
+        "UNITEDSTATES",
+        "UNITEDSTATESOFAMERICA",
+    }
+
+    if compacto in aliases_usa:
+        return "USA"
+
+    return _normalizar_texto(valor)
+
+
 def _normalizar_cantidad(valor: Any) -> Optional[float]:
     if _ausente(valor):
         return None
@@ -197,6 +217,9 @@ def _normalizar_descripcion(valor: Any) -> Optional[str]:
 
 
 def _normalizar(valor: Any, tipo: str):
+    if tipo == "pais":
+        return _normalizar_pais(valor)
+
     if tipo == "cantidad":
         return _normalizar_cantidad(valor)
 
@@ -372,6 +395,14 @@ def comparar_mercancia(
         if c["criticidad"] == "CRITICA"
     ]
 
+    # P004-PATCH-P:
+    # Una duda meramente complementaria se conserva en el detalle,
+    # pero no impide declarar coincidencia operativa.
+    dudas_relevantes = [
+        c for c in dudas
+        if c["criticidad"] in {"CRITICA", "IMPORTANTE"}
+    ]
+
     if diferencias_criticas:
         resultado_general = "DIFERENCIA"
 
@@ -381,7 +412,7 @@ def comparar_mercancia(
     elif diferencias:
         resultado_general = "DIFERENCIA"
 
-    elif dudas:
+    elif dudas_relevantes:
         resultado_general = "DUDA"
 
     else:

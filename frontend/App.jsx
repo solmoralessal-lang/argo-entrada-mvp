@@ -1524,7 +1524,6 @@ const [restaurandoSesion, setRestaurandoSesion] = useState(true);
     setOperacionMultiparte(null);
     setResumenMultiparte(null);
     setReporteMultiparte(null);
-    setDiagnosticoP004(null);
 
     setProcesando(true);
     setReporteEjecutivo(null);

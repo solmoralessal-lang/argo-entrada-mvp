@@ -160,7 +160,7 @@ async def argo_ocr(file):
             "faltantes": [],
             "faltantes_priorizados": [],
             "consolidado": {
-                "cliente": "Fives Cinetic Mexico S A De C V",
+                "cliente": None,
                 "proveedor": "DEMO",
                 "paqueteria": None,
                 "tracking": None,
@@ -6548,6 +6548,22 @@ REGLAS DE EVIDENCIA FÍSICA:
 - Si la imagen es DOCUMENTO y no contiene evidencia física real,
   lectura_fisica debe permanecer con valores null.
 
+LECTURA LITERAL DE IDENTIFICADORES:
+
+- Para purchase_order, partida, numero_parte, modelo, lote y serie,
+  transcribe EXACTAMENTE los caracteres visibles en la imagen.
+- Lee estos identificadores carácter por carácter.
+- NO corrijas, completes, sustituyas ni infieras dígitos o letras
+  aunque el valor parezca conocido, probable o similar a otro dato.
+- NO uses contexto de otros campos para modificar un identificador.
+- Distingue cuidadosamente caracteres visualmente similares,
+  especialmente 0/O, 1/I/L, 2/Z, 5/S, 6/G, 7/1 y 8/B.
+- Si uno o más caracteres no pueden leerse con suficiente certeza,
+  conserva únicamente lo que realmente puedas leer, reduce la
+  confianza del campo y agrega su nombre a requiere_confirmacion.
+- Una confianza alta significa que los caracteres fueron observados
+  claramente; no significa que el valor resulte lógico o esperado.
+
 CONFIANZA:
 
 - confianza_tipo debe ser número de 0 a 1.
@@ -6555,6 +6571,8 @@ CONFIANZA:
 - Si un campo crítico visible tiene confianza menor a 0.90, agrega
   su nombre exacto a requiere_confirmacion.
 - Campos críticos:
+  purchase_order
+  partida
   numero_parte
   modelo
   lote
@@ -6748,6 +6766,7 @@ Responde únicamente JSON válido.
                 "ocr_raw": texto,
                 "ocr_json": ocr_json
             })
+
 
         except Exception as e:
             errores.append({
@@ -7945,9 +7964,8 @@ async def procesar_desde_ocr(
         ocr = payload or {}
         consolidado = ocr.get("consolidado", {}) or {}
 
-        if not consolidado.get("cliente"):
-            consolidado["cliente"] = "Fives Cinetic Mexico S A De C V"
-
+        # El cliente nunca debe inferirse ni fijarse globalmente.
+        # La identidad real proviene del tenant/login o del payload.
         ocr["consolidado"] = consolidado
 
         # === P004-PATCH-E: PIPELINE MULTIPARTE AUTORITATIVO ===

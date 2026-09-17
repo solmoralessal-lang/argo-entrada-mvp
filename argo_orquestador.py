@@ -1186,6 +1186,14 @@ def finalizar_partidas_operacion(
         if int(r.get("evidencias") or 0) == 0
     )
 
+    # P004-PATCH-P:
+    # El resumen final debe conservar tambien el contador positivo
+    # que consume el tablero del operador.
+    partidas_con_evidencia = sum(
+        1 for r in resultados
+        if int(r.get("evidencias") or 0) > 0
+    )
+
     excepciones_operacion = len(
         operacion.get("excepciones_humanas", []) or []
     )
@@ -1233,6 +1241,9 @@ def finalizar_partidas_operacion(
 
         "partidas_sin_evidencia":
             partidas_sin_evidencia,
+
+        "partidas_con_evidencia":
+            partidas_con_evidencia,
 
         "excepciones_humanas":
             excepciones_operacion,
